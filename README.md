@@ -8,7 +8,7 @@ The code currently supports the following visualisation techniques:
 
 * **Feature maps**
 * **Filter weights** (actual kernel weights)
-* **Filter patterns** (filter responses visualised with gradient ascent)
+* **Filter patterns** (filter responses visualised with gradient ascent, based on [this keras.io example](https://keras.io/examples/vision/visualizing_what_convnets_learn/))
 * **Class activation maps**
 * **Image atlases**
 
