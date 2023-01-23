@@ -89,8 +89,7 @@ class FilterWeights:
         filters = (filters*255.).astype('uint8')
 
         num_filters = filters.shape[-1]
-        # nrows, ncols = obtain_reasonable_figsize(num_filters)
-        # fig = plt.figure(figsize=(int(figscale*(ncols/nrows)),figscale),dpi=dpi)
+
         nrows, ncols = obtain_reasonable_figsize(
             num_filters, aspect_mode=fig_aspect, orient=fig_orient)
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows),dpi=dpi)
@@ -283,7 +282,6 @@ class FilterVis:
 
 
     def get_blank_image(self, image_size):
-        # offset=0.0, scale_factor=0.2, brightness_factor=0.4):
         """
         Creates a blank, visually neutral image (predominantly gray).
         Pixel values can be shaped with offset, scale and brightness factors.
@@ -357,9 +355,6 @@ class FilterVis:
         if len(image.shape) == 4:
             image = image[0,...]
 
-        # as per the keras.io example
-        # image
-
         # crop image
         if image_crop > 0:
             image = image[image_crop:-image_crop, image_crop:-image_crop, :]
@@ -432,7 +427,6 @@ class FilterVis:
             aspect_mode=fig_aspect, orient=fig_orient)
 
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows),dpi=dpi)
-        # fig = plt.figure(figsize=(int(figscale*(ncols/nrows)),figscale),dpi=dpi)
         fig.subplots_adjust(wspace=0.05,hspace=0.05)
         if include_title:
             fig.add_suptitle(layer.name)
