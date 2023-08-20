@@ -10,12 +10,13 @@ The code currently supports the following visualisation techniques:
 * **Filter weights** (actual kernel weights)
 * **Filter patterns** (filter responses visualised with gradient ascent, based on [this keras.io example](https://keras.io/examples/vision/visualizing_what_convnets_learn/))
 * **Class activation maps**
+* **Saliency maps**
 * **Image atlases**
 
 with plans for several more.
 
 ### Examples
-An interactive Jupyter notebook with several examples will be included soon. Here are some example snippets for typical usage.
+An example gallery Jupyter notebook will be included soon. <br> Here are some example snippets for typical usage:
 
 #### Feature maps
 
@@ -53,6 +54,16 @@ from layervis.gradients import GradCAM
 
 gcam = GradCAM(model=model)
 fig = gcam.plot_heatmap(image=test_image, pred_index=0, layer='conv2d_3')
+```
+
+#### Saliency maps & class models
+```python
+from layervis.gradients import GradientSaliency, ClassModel
+gs = GradientSaliency(model=model)
+gs.plot_saliency_maps(test_image)
+
+cm = ClassModel(model=model)
+cm.plot_class_models()
 ```
 
 #### Image atlases
