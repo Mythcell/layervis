@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import os
 
-from .utils import save_image, obtain_reasonable_figsize
+from .utils import get_layer_object, obtain_reasonable_figsize, save_image
 
 
 class FeatureMaps:
@@ -45,7 +45,6 @@ class FeatureMaps:
                 DepthwiseConv2D, ReLU and LeakyReLU. NB: The plotting functions will
                 automatically ignore layers with invalid output shapes.
         """
-
         self.model = model
         if valid_layers is None:
             self.valid_layers = (
@@ -57,16 +56,50 @@ class FeatureMaps:
             self.valid_layers = valid_layers
 
 
+    def get_feature_maps(
+            self, input_image: tf.Tensor | np.ndarray,
+            layer: int | str) -> tf.Tensor | None:
+        """
+        Extracts feature maps for the given input with respect to the specified layer.
+
+        Args:
+            input_image: Single input with which to generate feature maps.
+                Its shape must be the same as the model's input shape.
+            layer: Name OR index of the layer to plot the feature maps of.
+
+        Returns:
+            Tensor of feature maps, or None if the feature maps are invalid.
+
+        Raises:
+            ValueError if the provided layer is not a valid layer.
+        """
+        layer = get_layer_object(self.model, layer)
+        if not isinstance(layer, self.valid_layers):
+            raise ValueError(f'Invalid layer, must be one of {self.valid_layers}')
+        
+        keras.backend.clear_session()
+        feature_model = keras.Model(inputs=self.model.input, outputs=layer.output)
+        feature_maps = feature_model.predict(input_image, verbose=0)
+        if len(feature_maps.shape) != 4:
+            print(
+                f'Skipping layer {layer.name} '
+                f'due to invalid output dimensions'
+            )
+            return None
+        return feature_maps
+
+
     def plot_feature_map(
-            self, feature_input: tf.Tensor | np.ndarray, layer: str | int, 
+            self, input_image: tf.Tensor | np.ndarray, layer: str | int, 
             figscale: float = 1, dpi: float = 100, colormap: str = 'cividis',
             fig_aspect: str = 'uniform', fig_orient: str = 'h',
-            include_title: bool = False, include_corner_axis: bool = True) -> Figure:
+            include_title: bool = False,
+            include_corner_axis: bool = True) -> Figure | None:
         """
         Plots and returns the feature maps for a given layer, with the given input.
 
         Args:
-            feature_input: Single input with which to generate feature maps.
+            input_image: Single input with which to generate feature maps.
                 Its shape must be the same as the model's input shape.
             layer: Name OR index of the layer to plot the feature maps of.
             figscale: Figure size multiplier, passed to plt.figure. Default is 1.
@@ -89,29 +122,11 @@ class FeatureMaps:
                 value provided for layer is not of the correct type, and/or if the
                 layer str/index does not exist.
         """
-        # extract the desired layer either by name or by index
-        if isinstance(layer, str):
-            feature_layer = self.model.get_layer(layer)
-        elif isinstance(layer, int):
-            feature_layer = self.model.layers[layer]
-        else:
-            raise ValueError('Value for layer must be either a name or an index.')
-        if not isinstance(feature_layer, self.valid_layers):
-            raise ValueError(f'Invalid layer, must be one of {self.valid_layers}')
-
-        feature_model = keras.Model(
-            inputs=self.model.input,
-            outputs=feature_layer.output,
-            name='feature_model'
+        feature_maps = self.get_feature_maps(
+            input_image=input_image, layer=layer
         )
-        feature_maps = feature_model.predict(feature_input, verbose=0)
-        if len(feature_maps.shape) != 4:
-            print(
-                f'Skipping layer {feature_layer.name}'
-                f'due to invalid output dimensions'
-            )
+        if feature_maps is None:
             return None
-
         # determine figure dimensions
         nmaps = feature_maps.shape[-1]
         nrows, ncols = obtain_reasonable_figsize(
@@ -121,7 +136,6 @@ class FeatureMaps:
         fig.subplots_adjust(wspace=0.05, hspace=0.05)
         if include_title:
             fig.suptitle(f'{self.layer_names[i]}')
-        # plot the feature maps
         for i in range(nmaps):
             fig.add_subplot(nrows, ncols, i+1)
             plt.imshow(feature_maps[0, ..., i], cmap=colormap)
@@ -180,45 +194,32 @@ class FeatureMaps:
                 bottom-left subplot of each figure. Defaults to False.
             verbose: Whether to print each filename as it is saved. Defaults to True.
         """
-
         if len(layers) == 0:
             layers = [
                 i.name for i in self.model.layers if isinstance(i, self.valid_layers)
             ]
         else:
-            layers = [
-                (i if isinstance(i, str) else self.model.layers[i].name) for i in layers
-            ]
-            layers = [
-                i for i in layers if (
-                    isinstance(self.model.get_layer(i), self.valid_layers)
-                )
-            ]
+            layers = [get_layer_object(self.model, l).name for l in layers]
 
         try:
             os.mkdir(save_dir)
         except FileExistsError:
             pass
         
-        # save initial image if required to do so
         if plot_input:
-            if len(feature_input.shape) != 4:
-                print('W: Input is not an image. Skipping plot_input.')
-            else:
-                save_image(
-                    image=feature_input[0, ...], figscale=figscale, dpi=dpi,
-                    colormap=colormap, facecolor=facecolor, save_dir=save_dir,
-                    filename=f'input{suffix}', save_format=save_format,
-                    figure_title=('input' if include_titles else None),
-                    include_axis=include_corner_axis, verbose=verbose
-                )
+            save_image(
+                image=feature_input[0, ...], figsize=figscale*6, dpi=dpi,
+                colormap=colormap, facecolor=facecolor, save_dir=save_dir,
+                filename=f'input{suffix}', save_format=save_format,
+                figure_title=('input' if include_titles else None),
+                include_axis=include_corner_axis, verbose=verbose
+            )
         for layer in layers:
             fig = self.plot_feature_map(
                 feature_input=feature_input, layer=layer, figscale=figscale, dpi=dpi,
                 colormap=colormap, fig_aspect=fig_aspect, fig_orient=fig_orient,
                 include_title=include_titles, include_corner_axis=include_corner_axis
             )
-            # in case no figure was returned due to invalid layer output
             if fig is None:
                 continue
             file_name = os.path.join(
@@ -230,7 +231,5 @@ class FeatureMaps:
             )
             if verbose:
                 print(f'Saved {file_name}')
-            
-            # clear the figure
             fig.clear()
             plt.close(fig)

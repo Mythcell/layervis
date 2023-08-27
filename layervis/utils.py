@@ -16,6 +16,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import tensorflow as tf
+from tensorflow import keras
+from keras import layers
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -49,56 +51,77 @@ def get_blank_image(
     return tf.random.uniform(shape=shape) * scale_factor + brightness_factor
 
 
+def highest_mean_filter(activations: tf.Tensor) -> int:
+    """Find the index of the filter/channel with the highest mean activation."""
+    if len(activations.shape) == 4:
+        filter_argmax = tf.argmax(
+            tf.squeeze(tf.reduce_mean(activations, axis=(1, 2)))
+        )
+    elif len(activations.shape) == 2:
+        filter_argmax = tf.argmax(activations[0])
+    else:
+        raise ValueError(f'{activations.shape} is an invalid shape')
+    return filter_argmax.numpy()
+
+
+def get_layer_object(
+        model: keras.Model, layer_spec: int | str) -> layers.Layer:
+    """Returns the layer object as specified by the given layer index or layer name."""
+    if isinstance(layer_spec, int):
+        return model.layers[layer_spec]
+    elif isinstance(layer_spec, str):
+        return model.get_layer(layer_spec)
+    else:
+        raise TypeError(f'{layer_spec} is not a valid layer specifier.')
+
+
 def save_image(
-        image: np.ndarray, figscale: float, dpi: float, colormap: str, facecolor: str,
-        save_dir: str, filename: str, save_format: str, figure_title: str,
-        include_axis: bool, verbose: bool) -> None:
+        image: tf.Tensor | np.ndarray, figsize: float, dpi: float, colormap: str,
+        facecolor: str, save_dir: str, filename: str, save_format: str,
+        figure_title: str, include_axis: bool, verbose: bool) -> None:
     """
     Plots and saves the given image according to the provided
-    figure and filename parameters. Note the image must be a
-    3-dimensional array, e.g. (28, 28, 1) for an MNIST image.
+    figure and filename parameters.
 
     Args:
-        image: Image to save, must be a 3-dimensional array
-        figscale: Base figure scale, passed to plt.figure.
-            Note the dimensions of the figure are automatically determined,
-            figscale is merely a multiplier with which to scale.
-        dpi: Base dpi, passed to plt.figure
+        image: Image to save.
+        figsize: Base figure size, passed to plt.figure.
+        dpi: Base dpi, passed to plt.figure.
         colormap: Base colormap, passed to plt.figure.
-            Note this is ignored for colour (RGB) images
-        facecolor: Figure background colour, passed to fig.savefig
-        save_dir: Directory to save the image in
-        filename: Name of the file to save
+            Note this is ignored for colour (RGB) images/
+        facecolor: Figure background colour, passed to fig.savefig/
+        save_dir: Directory to save the image in/
+        filename: Name of the file to save/
         save_format: Format to save the image with
             (e.g. 'png','jpg','pdf)
         figure_title: Title to add to the figure.
             Note that no title is added if this is set to None or ''
-        include_axis: Whether to include an axis
-        verbose: Whether to include print statements
-        
+        include_axis: Whether to include an axis.
+        verbose: Whether to include print statements.
     """
+    if isinstance(image, tf.Tensor):
+        image = image.numpy()
+    image = np.squeeze(image)
 
-    fig = plt.figure(figsize=(figscale, figscale), dpi=dpi)
+    fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
     if figure_title is not (None or ''):
         fig.suptitle(figure_title)
-
-    if image.shape[-1] == 1: # mono
-        plt.imshow(image[..., 0], cmap=colormap)
-    else:
-        plt.imshow(image[...])
-
+    # if image.shape[-1] == 1: # mono
+    #     plt.imshow(image[..., 0], cmap=colormap)
+    # else:
+    #     plt.imshow(image[...])
+    plt.imshow(image, cmap=colormap)
     if not include_axis:
         plt.axis('off')
-    
     file_name = os.path.join(save_dir, f'{filename}.{save_format}')
-
     if verbose:
         print(f'Saving to {file_name}')
-
     fig.savefig(
         file_name, format=save_format,
         facecolor=facecolor, bbox_inches='tight'
     )
+    fig.clear()
+    plt.close(fig)
 
 
 def euclidean_dist(a, b):
