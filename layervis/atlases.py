@@ -51,7 +51,7 @@ def plot_image_atlas(
             the range [0,1]. Default is True.
         label_colormap: A matplotlib colormap object to colour the labels.
             Note that this is not a string! It must be an object, e.g. plt.cm.viridis.
-            plt.cm.viridis will be used if no colormap was provided.
+            If set to None (default), plt.cm.viridis will be used.
         label_display: One of 'border' or 'overlay'. If set to 'border', labels
             will be shown by adding a coloured, rectangular border around each image
             in the grid. If set to 'overlay', the image will instead be overlaid with
@@ -67,11 +67,11 @@ def plot_image_atlas(
 
     # first normalize the embedding
     if normalize_embedding:
-        embedding[:,0] = (
-            (embedding[:,0] - np.min(embedding[:,0])) / np.ptp(embedding[:,0])
+        embedding[:, 0] = (
+            (embedding[:, 0] - np.min(embedding[:, 0])) / np.ptp(embedding[:, 0])
         )
-        embedding[:,1] = (
-            (embedding[:,1] - np.min(embedding[:,1])) / np.ptp(embedding[:,1])
+        embedding[:, 1] = (
+            (embedding[:, 1] - np.min(embedding[:, 1])) / np.ptp(embedding[:, 1])
         )
     # normalize image labels (this is done regardless of the above normalize_embedding)
     show_labels = labels is not None
@@ -82,10 +82,10 @@ def plot_image_atlas(
 
     # determine grid values
     xvals = np.linspace(
-        np.min(embedding[:,0]) - grid_pad, np.max(embedding[:,0]) + grid_pad, nx
+        np.min(embedding[:, 0]) - grid_pad, np.max(embedding[:, 0]) + grid_pad, nx
     )
     yvals = np.linspace(
-        np.max(embedding[:,1]) + grid_pad, np.min(embedding[:,1]) - grid_pad, ny
+        np.max(embedding[:, 1]) + grid_pad, np.min(embedding[:, 1]) - grid_pad, ny
     )
 
     # get size of the image
@@ -99,22 +99,22 @@ def plot_image_atlas(
         for j in xvals:
             ax = fig.add_subplot(ny, nx, nn)
             closest = min(
-                enumerate(embedding), key=lambda x: euclidean_dist(x[1], (j,i))
+                enumerate(embedding), key=lambda x: euclidean_dist(x[1], (j, i))
             )
-            distance = euclidean_dist(closest[1], (j,i))
+            distance = euclidean_dist(closest[1], (j, i))
             if distance <= max_image_dist:
-                ax.imshow(images[closest[0],...])
+                ax.imshow(images[closest[0], ...])
                 if show_labels:
                     if label_display == 'border':
                         rect = patches.Rectangle(
-                            (1,1), width=image_size-2, height=image_size-2,
+                            (1, 1), width=image_size-2, height=image_size-2,
                             linewidth=border_thickness, facecolor='none',
                             edgecolor=label_colormap(labels[closest[0]])
                         )
                         ax.add_patch(rect)
                     elif label_display == 'overlay':
                         rect = patches.Rectangle(
-                            (0,0), width=image_size, height=image_size,
+                            (0, 0), width=image_size, height=image_size,
                             linewidth=0, edgecolor='none', alpha=overlay_alpha,
                             facecolor=label_colormap(labels[closest[0]])
                         )

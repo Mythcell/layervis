@@ -65,12 +65,17 @@ def highest_mean_filter(activations: tf.Tensor) -> int:
 
 
 def get_layer_object(
-        model: keras.Model, layer_spec: int | str) -> layers.Layer:
-    """Returns the layer object as specified by the given layer index or layer name."""
+        model: keras.Model, layer_spec: int | str | layers.Layer) -> layers.Layer:
+    """
+    Returns the layer object as specified by the given layer index or layer name.
+    Note layer_spec can also be a Layer object, in which case it just returns itself.
+    """
     if isinstance(layer_spec, int):
         return model.layers[layer_spec]
     elif isinstance(layer_spec, str):
         return model.get_layer(layer_spec)
+    elif isinstance(layer_spec, layers.Layer):
+        return layer_spec
     else:
         raise TypeError(f'{layer_spec} is not a valid layer specifier.')
 
@@ -106,10 +111,6 @@ def save_image(
     fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
     if figure_title is not (None or ''):
         fig.suptitle(figure_title)
-    # if image.shape[-1] == 1: # mono
-    #     plt.imshow(image[..., 0], cmap=colormap)
-    # else:
-    #     plt.imshow(image[...])
     plt.imshow(image, cmap=colormap)
     if not include_axis:
         plt.axis('off')

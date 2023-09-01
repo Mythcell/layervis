@@ -25,7 +25,7 @@ from matplotlib.figure import Figure
 from skimage.filters import gaussian
 import os
 
-from .utils import get_blank_image, obtain_reasonable_figsize
+from .utils import get_blank_image, get_layer_object, obtain_reasonable_figsize
 
 class FilterWeights:
     """
@@ -43,7 +43,7 @@ class FilterWeights:
         
 
     def plot_filter_weights(
-            self, layer: int | str, input_map_index: int = 0,
+            self, layer: int | str | tf.Tensor, input_map_index: int = 0,
             normalize_weights: bool = True, figscale: float = 1, dpi: float = 100,
             colormap: str = 'cividis', fig_aspect: str = 'uniform',
             fig_orient: str = 'h', include_title: bool = False) -> Figure:
@@ -74,29 +74,21 @@ class FilterWeights:
         Raises:
             ValueError if attempting to call with a non-convolutional layer
         """
-        if isinstance(layer, int):
-            layer = self.model.layers[layer]
-        elif isinstance(layer, str):
-            layer = self.model.get_layer(layer)
-        else:
-            raise ValueError(f'Invalid layer {layer}')
+        layer = get_layer_object(model=self.model, layer_spec=layer)
         if not isinstance(layer, self.valid_layers):
             raise ValueError(f'Invalid layer, must be one of {self.valid_layers}')
 
         filters = layer.get_weights()[0]
-
         # extract the filters for the given input_map_index
         # only if the filter input isn't an RGB image
         is_rgb = filters.shape[-2] == 3
         if not is_rgb:
             filters = filters[..., input_map_index, :]
-        # normalise to [0,1]
         if normalize_weights:
             filters = (
                 (filters - np.min(filters))
                 / (np.ptp(filters) + keras.backend.epsilon())
             )
-        # convert to [0,255]
         filters = np.uint8(filters*255)
 
         num_filters = filters.shape[-1]
@@ -107,15 +99,10 @@ class FilterWeights:
         fig.subplots_adjust(wspace=0.05, hspace=0.05)
         if include_title:
             fig.suptitle(layer.name)
-
         for i in range(num_filters):
             fig.add_subplot(nrows, ncols, i+1)
-            if is_rgb:
-                plt.imshow(filters[..., i])
-            else: # colormap should only apply to non-rgb filters
-                plt.imshow(filters[..., i], cmap=colormap)
+            plt.imshow(filters[..., i], cmap=colormap)
             plt.axis('off')
-        
         return fig
 
 
@@ -174,10 +161,8 @@ class FilterWeights:
             if verbose:
                 print(f'Saving to {filename}')
             fig.savefig(
-                filename, format=save_format,
-                facecolor=facecolor, bbox_inches='tight'
+                filename, format=save_format, facecolor=facecolor, bbox_inches='tight'
             )
-            
             fig.clear()
             plt.close(fig)
 
@@ -272,7 +257,6 @@ class FilterVis:
         Returns:
             A tf.Tensor of the image after the gradient ascent step
         """
-
         with tf.GradientTape() as tape:
             tape.watch(image)
             loss = self.compute_image_loss(
@@ -280,8 +264,6 @@ class FilterVis:
                 extractor=extractor, activation_crop=activation_crop
             )
         gradients = tape.gradient(loss, image)
-
-        # apply image regularisations (where applicable)
         gradients = tf.math.l2_normalize(gradients)
         image *= self.image_decay
         if current_step % self.blur_freq == 0 and self.enable_blur:
@@ -299,9 +281,9 @@ class FilterVis:
                         sigma=self.blur_size
                     )[np.newaxis, ..., np.newaxis]
                 )
-
         image += learning_rate*gradients
         return image
+
 
     def process_filter(
             self, filter_index: int, initial_image: tf.Tensor | None,
@@ -355,13 +337,11 @@ class FilterVis:
         Returns:
             np.ndarray of type uint8 representing the post-processed image
         """
-        # remove batch dimension
+        # remove batch dimension and crop
         if len(image.shape) == 4:
             image = image[0, ...]
-
         if image_crop > 0:
             image = image[image_crop:-image_crop, image_crop:-image_crop, :]
-
         # normalise and rescale
         image = (image - np.min(image)) / (np.ptp(image) + keras.backend.epsilon())
         image *= 255
@@ -369,7 +349,8 @@ class FilterVis:
 
 
     def plot_filter_pattern(
-            self, layer: str | int, initial_image: np.ndarray | tf.Tensor = None,
+            self, layer: str | int | tf.Tensor,
+            initial_image: np.ndarray | tf.Tensor = None,
             num_iterations: int = 30, learning_rate: float = 10,
             activation_crop: int = 1, image_crop: int = 0, figscale: float = 1,
             dpi: float = 100, colormap: str = 'binary_r', fig_aspect: str = 'uniform',
@@ -409,13 +390,7 @@ class FilterVis:
         Raises:
             ValueError if trying to call on an invalid layer
         """
-
-        if isinstance(layer, int):
-            layer = self.model.layers[layer]
-        elif isinstance(layer, str):
-            layer = self.model.get_layer(name=layer)
-        else:
-            raise ValueError(f'Invalid layer type')
+        layer = get_layer_object(model=self.model, layer_spec=layer)
         if not isinstance(layer, self.valid_layers):
             raise ValueError(f'Invalid layer, must be one of {self.valid_layers}')
 
@@ -431,33 +406,24 @@ class FilterVis:
         nrows, ncols = obtain_reasonable_figsize(
             num_filters, aspect_mode=fig_aspect, orient=fig_orient
         )
-
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
         fig.subplots_adjust(wspace=0.05, hspace=0.05)
         if include_title:
             fig.add_suptitle(layer.name)
-
         for i in range(num_filters):
             fig.add_subplot(nrows, ncols, i+1)
-            # obtain the image
             image = self.process_filter(
                 i, initial_image, extractor,
                 num_iterations, learning_rate, activation_crop
             )
-            # normalise it for plotting
             image = self.postprocess_image(image, image_crop)
-            # now plot it
-            if image.shape[-1] == 1:
-                plt.imshow(image[..., 0], cmap=colormap)
-            else:
-                plt.imshow(image)
+            plt.imshow(image, cmap=colormap)
             if include_corner_axis:
                 # remove axes from all but the bottom-left subplot
                 if i != (nrows - 1)*ncols:
                     plt.axis('off')
             else:
                 plt.axis('off')
-
         return fig
 
 
@@ -505,7 +471,6 @@ class FilterVis:
                 on the bottom left subplot. Defaults to False.
             verbose: Whether to include print statements.
         """
-
         try:
             os.mkdir(save_dir)
         except FileExistsError:
@@ -515,7 +480,6 @@ class FilterVis:
             layer.name for layer in self.model.layers
             if isinstance(layer, self.valid_layers)
         ]
-
         for layer_name in layer_names:
             fig = self.plot_filter_pattern(
                 layer_name, initial_image=initial_image,
@@ -525,14 +489,13 @@ class FilterVis:
                 fig_orient=fig_orient, include_title=include_titles,
                 include_corner_axis=include_corner_axis
             )
-            file_name = os.path.join(
+            filename = os.path.join(
                 save_dir, f'{prefix}{layer_name}{suffix}.{save_format}'
             )
             if verbose:
-                print(f'Saving to {file_name}')
+                print(f'Saving to {filename}')
             fig.savefig(
-                file_name,format=save_format,facecolor=facecolor,bbox_inches='tight'
+                filename, format=save_format, facecolor=facecolor, bbox_inches='tight'
             )
-
             fig.clear()
             plt.close(fig)

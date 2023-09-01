@@ -58,7 +58,7 @@ class FeatureMaps:
 
     def get_feature_maps(
             self, input_image: tf.Tensor | np.ndarray,
-            layer: int | str) -> tf.Tensor | None:
+            layer: int | str | layers.Layer) -> tf.Tensor | None:
         """
         Extracts feature maps for the given input with respect to the specified layer.
 
@@ -90,7 +90,7 @@ class FeatureMaps:
 
 
     def plot_feature_map(
-            self, input_image: tf.Tensor | np.ndarray, layer: str | int, 
+            self, input_image: tf.Tensor | np.ndarray, layer: str | int | layers.Layer, 
             figscale: float = 1, dpi: float = 100, colormap: str = 'cividis',
             fig_aspect: str = 'uniform', fig_orient: str = 'h',
             include_title: bool = False,
@@ -149,7 +149,8 @@ class FeatureMaps:
 
 
     def plot_feature_maps(
-            self, feature_input: tf.Tensor | np.ndarray, layers: list[int | str] = [],
+            self, input_image: tf.Tensor | np.ndarray,
+            layers: list[int | str | layers.Layer] = [],
             plot_input: bool = True, figscale: float = 1, dpi: float = 100,
             colormap: str = 'cividis', facecolor: str = 'white',
             fig_aspect: str = 'uniform', fig_orient: str = 'h',
@@ -164,8 +165,8 @@ class FeatureMaps:
         for a flattened MNIST input.
 
         Args:
-            feature_input: Single input with which to generate feature maps.
-                Its shape must be the same as model's input shape for a batch size of 1.
+            input_image: Single input with which to generate feature maps.
+                Its shape must be the same as the model's input shape.
             layers: List of layer names and/or indices of the layers to extract
                 features from. If empty, the code will process all valid layers.
             plot_input: Whether to also plot the input image. Defaults to True.
@@ -182,12 +183,9 @@ class FeatureMaps:
             fig_orient: One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
             save_dir: Directory in which to save images.
-            save_format: Format to save images with
-                e.g. 'png', 'pdf', 'jpg'
-            prefix: Prefix to prepend to the file name of each plot,
-                e.g. example1_, ex2-, test
-            suffix: Suffix to append to the file name of each plot
-                e.g. _example1, -ex2, test
+            save_format: Format to save images with e.g. 'png', 'pdf', 'jpg'
+            prefix: Optional prefix to prepend to the output filename, e.g. example1_.
+            suffix: Optional suffix to append to the output filename e.g. _example1.
             include_titles: Whether to title each figure with the name
                 of the respective layer. Defaults to True.
             include_corner_axis: Whether to display axes on the
@@ -208,7 +206,7 @@ class FeatureMaps:
         
         if plot_input:
             save_image(
-                image=feature_input[0, ...], figsize=figscale*6, dpi=dpi,
+                image=input_image[0, ...], figsize=figscale*6, dpi=dpi,
                 colormap=colormap, facecolor=facecolor, save_dir=save_dir,
                 filename=f'input{suffix}', save_format=save_format,
                 figure_title=('input' if include_titles else None),
@@ -216,7 +214,7 @@ class FeatureMaps:
             )
         for layer in layers:
             fig = self.plot_feature_map(
-                feature_input=feature_input, layer=layer, figscale=figscale, dpi=dpi,
+                input_image=input_image, layer=layer, figscale=figscale, dpi=dpi,
                 colormap=colormap, fig_aspect=fig_aspect, fig_orient=fig_orient,
                 include_title=include_titles, include_corner_axis=include_corner_axis
             )
