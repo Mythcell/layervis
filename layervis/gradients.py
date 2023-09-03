@@ -47,7 +47,7 @@ class GradCAM():
 
     def generate_heatmap(
             self, image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str = None) -> np.ndarray:
+            layer: int | str | layers.Layer = None) -> np.ndarray:
         """
         Generates a class activation heatmap using Grad-CAM for the
         given image and prediction index. Can optionally specify a layer (uses the
@@ -120,8 +120,8 @@ class GradCAM():
 
     def plot_heatmap(
             self, image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str = None, colormap: str = 'jet', heatmap_alpha: float = 0.42,
-            figsize: float = 6, dpi: float = 100) -> Figure:
+            layer: int | str | layers.Layer = None, colormap: str = 'jet',
+            heatmap_alpha: float = 0.42, figsize: float = 6, dpi: float = 100) -> Figure:
         """
         Generates and plots a class activation heatmap using Grad-CAM for the
         given image, prediction index and layer.
@@ -156,7 +156,7 @@ class GradCAM():
 
     def plot_heatmaps(
             self, image: np.ndarray, class_indices: list[int] = [],
-            layer: int | str = None, colormap: str = 'jet',
+            layer: int | str | layers.Layer = None, colormap: str = 'jet',
             heatmap_alpha: float = 0.42, include_class_titles: bool = True,
             figscale: float = 2, dpi: float = 100, textcolor: str = 'white',
             facecolor: str = 'black', save_dir: str = 'heatmaps', save_str: str = '',
@@ -200,7 +200,7 @@ class GradCAM():
 
         if len(class_indices) == 0:
             class_indices = list(range(self.model.output_shape[-1]))
-        # nmaps = len(class_indices)
+
         nrows, ncols = obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
@@ -358,9 +358,8 @@ class GradientSaliency():
             tape.watch(input_image)
             pred = smodel(input_image)
 
-        nmaps = len(class_indices)
         nrows, ncols = obtain_reasonable_figsize(
-            nmaps, aspect_mode=fig_aspect, orient=fig_orient
+            num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
         if include_class_titles:
@@ -402,8 +401,8 @@ class GradientSaliency():
 
     def plot_layer_saliency_maps(
             self, input_image: tf.Tensor | np.ndarray,
-            layers: list[int | str | layers.Layer] = [],
-            class_indices: list[int] = [], max_classes: int = 100,
+            layers_list: list[int | str | layers.Layer] = [],
+            class_indices: list[int] = [], max_classes: int = 1024,
             image_mode: str = 'overlay', overlay_alpha: float = 0.5,
             figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
             overlay_cmap: str = 'jet', include_class_titles: bool = True,
@@ -417,7 +416,7 @@ class GradientSaliency():
 
         Args:
             input_image: The desired input image.
-            layers: List of layers to plot saliency maps for. Can be a layer index,
+            layers_list: List of layers to plot saliency maps for. Can be a layer index,
                 layer name or layer object. If empty, will automatically
                 create saliency maps for all layers in the model.
             class_indices: Classes / output channels to visualise the saliency map for.
@@ -427,7 +426,7 @@ class GradientSaliency():
                 activation.
             max_classes: Skips layers containing more than this number of output
                 classes / channels. Useful for avoiding huge figures for large Dense
-                layers. Default is 100.
+                layers. Default is 1024.
             image_mode: One of 'overlay', 'saliency' or 'image'. If 'overlay',
                 plots the image overlaid with the saliency heatmap. The other two options
                 plot just the saliency map or image by itself respectively.
@@ -447,7 +446,7 @@ class GradientSaliency():
                 Default is 'black'.
             save_dir: Directory to save the plots to. Default is 'saliency_maps'.
             save_str: Base output filename for each plot. Plots are saved with the
-                filename {save_str}{layer}.{save_format}. Default is ''
+                filename {save_str}{layer.name}.{save_format}. Default is ''
             save_format: Format to save images with, e.g. 'png' (default), 'pdf', 'jpg'.
             fig_aspect: One of 'uniform' or 'wide', controls the aspect ratio
                 of the figure. Use 'uniform' for squarish plots.
@@ -460,11 +459,14 @@ class GradientSaliency():
         except FileExistsError:
             pass
 
-        if len(layers) == 0:
-            layers = [l for l in self.model.layers]
+        if len(layers_list) == 0:
+            layers_list = [l for l in self.model.layers]
         else:
-            layers = [get_layer_object(self.model, l) for l in layers]
-        for l in layers:
+            layers_list = [get_layer_object(self.model, l) for l in layers_list]
+        for l in layers_list:
+            if isinstance(l, layers.InputLayer):
+                print(f'Skipping input layer {l.name}')
+                continue
             if l.output_shape[-1] > max_classes:
                 print(
                     f'Skipping layer {l.name} '
@@ -559,7 +561,7 @@ class ClassModel():
     
 
     def generate_class_model(
-            self, class_index: int, score_layer: int | str = -2,
+            self, class_index: int, score_layer: int | str | layers.Layer = -2,
             num_iterations: int = 30, learning_rate: int = 10, image_decay: float = 0.8,
             enable_blur: bool = True, blur_freq: int = 5,
             blur_size: int = 3) -> np.ndarray:
@@ -616,7 +618,7 @@ class ClassModel():
     
 
     def plot_class_model(
-            self, class_index: int, score_layer: int | str = -2,
+            self, class_index: int, score_layer: int | str | layers.Layer = -2,
             num_iterations: int = 30, learning_rate: int = 10, image_decay: float = 0.8,
             enable_blur: bool = True, blur_freq: int = 5, blur_size: int = 3,
             figsize: float = 6, dpi: float = 100, colormap: str = 'viridis') -> Figure:
@@ -663,8 +665,9 @@ class ClassModel():
 
 
     def plot_class_models(
-            self, class_indices: list[int] = [], score_layer: int | str = -2,
-            num_iterations: int = 30, learning_rate: int = 10, image_decay: float = 0.8,
+            self, class_indices: list[int] = [],
+            score_layer: int | str | layers.Layer = -2, num_iterations: int = 30,
+            learning_rate: int = 10, image_decay: float = 0.8,
             enable_blur: bool = True, blur_freq: int = 5, blur_size: int = 3,
             figscale: float = 2, dpi: float = 100, colormap: str = 'viridis',
             include_class_titles: bool = True, textcolor: str = 'white',
