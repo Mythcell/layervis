@@ -125,9 +125,9 @@ def save_image(
     plt.close(fig)
 
 
-def euclidean_dist(a, b):
+def euclidean_dist_2d(a: tuple[float], b: tuple[float]) -> float:
     """
-    Returns the Euclidean distance between a and b.
+    Returns the Euclidean distance between a and b where a, b are 2D coordinates.
     Curiously, this is around 10% faster than np.linalg.norm()
     """
     return ((b[0] - a[0])**2 + (b[1] - a[1])**2)**0.5

@@ -29,6 +29,9 @@ from .utils import get_layer_object, obtain_reasonable_figsize, save_image
 class FeatureMaps:
     """
     Class for visualising the feature maps of convolutional neural networks.
+
+    Attributes:
+        See __init__()
     """
 
     def __init__(

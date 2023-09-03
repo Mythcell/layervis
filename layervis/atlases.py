@@ -22,7 +22,7 @@ from matplotlib import patches
 from matplotlib.figure import Figure
 from matplotlib.colors import Colormap
 
-from .utils import euclidean_dist
+from .utils import euclidean_dist_2d
 
 def plot_image_atlas(
         images: np.ndarray, embedding: np.ndarray, nx: int, ny: int,
@@ -63,8 +63,10 @@ def plot_image_atlas(
         figscale: Figure scale multiplier. The figure size is nx*figscale
             by ny*figscale. Default is 1.
         dpi: Base resolution, passed to plt.figure. Default is 100.
-    """
 
+    Returns:
+        The figure displaying the image atlas, where each image is an individual subplot.
+    """
     # first normalize the embedding
     if normalize_embedding:
         embedding[:, 0] = (
@@ -73,14 +75,13 @@ def plot_image_atlas(
         embedding[:, 1] = (
             (embedding[:, 1] - np.min(embedding[:, 1])) / np.ptp(embedding[:, 1])
         )
-    # normalize image labels (this is done regardless of the above normalize_embedding)
+    # label normalisation is intentionally performed regardless of normalize_embedding
     show_labels = labels is not None
     if show_labels:
         labels = (labels - np.min(labels)) / np.ptp(labels)
         if label_colormap is None:
             label_colormap = plt.cm.viridis
 
-    # determine grid values
     xvals = np.linspace(
         np.min(embedding[:, 0]) - grid_pad, np.max(embedding[:, 0]) + grid_pad, nx
     )
@@ -88,20 +89,17 @@ def plot_image_atlas(
         np.max(embedding[:, 1]) + grid_pad, np.min(embedding[:, 1]) - grid_pad, ny
     )
 
-    # get size of the image
     image_size = images[0].shape[0]
-
     fig = plt.figure(figsize=(figscale*nx, figscale*ny), dpi=dpi)
     fig.subplots_adjust(wspace=0, hspace=0)
-
     nn = 1 # subplot index
     for i in yvals:
         for j in xvals:
             ax = fig.add_subplot(ny, nx, nn)
             closest = min(
-                enumerate(embedding), key=lambda x: euclidean_dist(x[1], (j, i))
+                enumerate(embedding), key=lambda x: euclidean_dist_2d(x[1], (j, i))
             )
-            distance = euclidean_dist(closest[1], (j, i))
+            distance = euclidean_dist_2d(closest[1], (j, i))
             if distance <= max_image_dist:
                 ax.imshow(images[closest[0], ...])
                 if show_labels:

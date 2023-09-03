@@ -173,6 +173,9 @@ class FilterVis:
     starting from either a visually neutral image or a specific input image.
     There are several class attributes for controlling the gradient ascent
     and specifying the scaling for the initial, neutral images.
+
+    Attributes:
+        See __init__()
     """
     
     def __init__(

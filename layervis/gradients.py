@@ -34,24 +34,29 @@ from .utils import (
 )
 
 class GradCAM():
-    """Class for visualising class activation maps with GradCAM"""
+    """
+    Class for visualising class activation maps with GradCAM
+
+    Attributes:
+        model: The keras Model to visualise.
+    """
 
     def __init__(self, model: keras.Model):
         """Initialises a GradCAM object to be used with the given model.
 
         Args:
-            model: keras.Model object.
+            model: The keras Model to visualise.
         """
         self.model = model
 
 
     def generate_heatmap(
-            self, image: tf.Tensor | np.ndarray, class_index: int,
+            self, input_image: tf.Tensor | np.ndarray, class_index: int,
             layer: int | str | layers.Layer = None) -> np.ndarray:
         """
-        Generates a class activation heatmap using Grad-CAM for the
-        given image and prediction index. Can optionally specify a layer (uses the
-        last convolutional layer as default).
+        Generates a class activation heatmap using Grad-CAM for the given input image
+        and prediction class index. Can optionally specify a layer (uses the last
+        convolutional layer by default).
 
         Args:
             input_image: The desired input image.
@@ -82,7 +87,7 @@ class GradCAM():
             outputs=[layer.output, self.model.output]
         )
         with tf.GradientTape() as tape:
-            layer_output, preds = gradmodel(image)
+            layer_output, preds = gradmodel(input_image)
             pred_class_output = preds[:, class_index]
         grads = tape.gradient(pred_class_output, layer_output)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
@@ -95,10 +100,10 @@ class GradCAM():
 
 
     def merge_heatmap(
-            self, image: tf.Tensor | np.ndarray, heatmap: np.ndarray,
+            self, input_image: tf.Tensor | np.ndarray, heatmap: np.ndarray,
             colormap: str = 'jet', heatmap_alpha: float = 0.42) -> np.ndarray:
         """
-        Merge the provided heatmap with the given image. Returns a new image.
+        Merge the provided heatmap with the given input image. Returns a new image.
 
         Args:
             input_image: The desired input image.
@@ -109,22 +114,25 @@ class GradCAM():
             colormap: Colormap to use for the activation heatmap. Must be a valid
                 matplotlib colormap string. Default is 'jet'.
             heatmap_alpha: Opacity of the overlaid heatmap. Default is 0.42.
+
+        Returns:
+            An image of the heatmap merged with the input image.
         """
         cmap_colors = plt.get_cmap(colormap)(np.arange(256))[:, :3]
         heatmap = array_to_img(cmap_colors[heatmap])
-        heatmap = heatmap.resize((image.shape[1], image.shape[2]))
+        heatmap = heatmap.resize((input_image.shape[1], input_image.shape[2]))
         heatmap = img_to_array(heatmap)/255.
-        heatmap = image[0, ...] + heatmap * heatmap_alpha
+        heatmap = input_image[0, ...] + heatmap * heatmap_alpha
         return np.array(array_to_img(heatmap))
 
 
     def plot_heatmap(
-            self, image: tf.Tensor | np.ndarray, class_index: int,
+            self, input_image: tf.Tensor | np.ndarray, class_index: int,
             layer: int | str | layers.Layer = None, colormap: str = 'jet',
             heatmap_alpha: float = 0.42, figsize: float = 6, dpi: float = 100) -> Figure:
         """
         Generates and plots a class activation heatmap using Grad-CAM for the
-        given image, prediction index and layer.
+        given input image, prediction index and layer.
 
         Args:
             input_image: The desired input image.
@@ -142,10 +150,10 @@ class GradCAM():
             The figure with the desired heatmap.
         """
         heatmap = self.generate_heatmap(
-            image=image, class_index=class_index, layer=layer,
+            input_image=input_image, class_index=class_index, layer=layer,
         )
         heatmap = self.merge_heatmap(
-            image=image, heatmap=heatmap,
+            input_image=input_image, heatmap=heatmap,
             colormap=colormap, heatmap_alpha=heatmap_alpha
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
@@ -155,7 +163,7 @@ class GradCAM():
     
 
     def plot_heatmaps(
-            self, image: np.ndarray, class_indices: list[int] = [],
+            self, input_image: np.ndarray, class_indices: list[int] = [],
             layer: int | str | layers.Layer = None, colormap: str = 'jet',
             heatmap_alpha: float = 0.42, include_class_titles: bool = True,
             figscale: float = 2, dpi: float = 100, textcolor: str = 'white',
@@ -163,8 +171,8 @@ class GradCAM():
             save_format: str = 'png', fig_aspect: str = 'uniform',
             fig_orient: str = 'h') -> None:
         """
-        Plots and saves class activation heatmaps using Grad-CAM for the given image
-        with respect to the specified class indices, or all class indices.
+        Plots and saves class activation heatmaps using Grad-CAM for the given input
+        image with respect to the specified class indices, or all class indices.
 
         Args:
             input_image: The desired input image.
@@ -213,10 +221,10 @@ class GradCAM():
         for i, ci in enumerate(class_indices):
             fig.add_subplot(nrows, ncols, i+1)
             heatmap = self.generate_heatmap(
-                image=image, class_index=ci, layer=layer
+                input_image=input_image, class_index=ci, layer=layer
             )
             heatmap = self.merge_heatmap(
-                image=image, heatmap=heatmap,
+                input_image=input_image, heatmap=heatmap,
                 colormap=colormap, heatmap_alpha=heatmap_alpha
             )
             plt.imshow(heatmap)
@@ -236,6 +244,11 @@ class GradCAM():
 class GradientSaliency():
     """
     Class for visualising saliency maps via vanilla gradient backpropagation.
+
+    Attributes:
+        model: The Keras model to visualise.
+        invalid_layers: Tuple of layers.Layer objects to ignore when plotting saliency
+            maps with plot_layer_saliency_maps.
     """
     
     def __init__(self, model: keras.Model):
@@ -243,9 +256,10 @@ class GradientSaliency():
         Initialises a GradientSalency object with the given model.
 
         Args:
-            model (keras.Model): A Keras model.
+            model: A keras Model to visualise.
         """
         self.model = model
+        self.invalid_layers: tuple[layers.Layer] = (layers.InputLayer,)
 
 
     def get_saliency_map(
@@ -276,7 +290,6 @@ class GradientSaliency():
         smodel = keras.Model(
             inputs=self.model.inputs, outputs=layer.output, name='saliency_model'
         )
-
         with tf.GradientTape() as tape:
             tape.watch(input_image)
             pred = smodel(input_image)
@@ -399,20 +412,20 @@ class GradientSaliency():
         plt.close(fig)
     
 
-    def plot_layer_saliency_maps(
+    def plot_saliency_maps_layers(
             self, input_image: tf.Tensor | np.ndarray,
             layers_list: list[int | str | layers.Layer] = [],
             class_indices: list[int] = [], max_classes: int = 1024,
             image_mode: str = 'overlay', overlay_alpha: float = 0.5,
             figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
-            overlay_cmap: str = 'jet', include_class_titles: bool = True,
+            overlay_cmap: str = 'jet', include_class_titles: bool = False,
             textcolor: str = 'white', facecolor: str = 'black',
             save_dir: str = 'saliency_maps', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
             fig_orient: str = 'h') -> None:
         """
         Plots and saves gradient-based saliency maps for the given input image
-        and specified layers.
+        in each layer in the specified list of layers.
 
         Args:
             input_image: The desired input image.
@@ -460,13 +473,12 @@ class GradientSaliency():
             pass
 
         if len(layers_list) == 0:
-            layers_list = [l for l in self.model.layers]
+            layers_list = [
+                l for l in self.model.layers if not isinstance(l, self.invalid_layers)
+            ]
         else:
             layers_list = [get_layer_object(self.model, l) for l in layers_list]
         for l in layers_list:
-            if isinstance(l, layers.InputLayer):
-                print(f'Skipping input layer {l.name}')
-                continue
             if l.output_shape[-1] > max_classes:
                 print(
                     f'Skipping layer {l.name} '
@@ -487,6 +499,19 @@ class GradientSaliency():
 class ClassModel():
     """
     Class for generating class model images.
+
+    Attributes:
+        model: The Keras model to visualise.
+        scale_factor: All pixels are multiplied by this amount. Used when generating
+            the random initial images.Controls the difference
+            between the maximal and minimal pixel values.
+        brightness_factor: This amount is added to all pixels thus equal.
+            Used when generating the random initial images. Controls the
+            minimum pixel value.
+        score_model: Intermediate Keras model which outputs class scores. Is included
+            as an attribute so as not to be recreated when looping over class indices.
+        score_layer: The current model layer being used as the output for the score
+            model. If this changes then the score model is recreated.
     """
 
     def __init__(
@@ -498,12 +523,13 @@ class ClassModel():
         for the gradient ascent loop.
 
         Args:
-            model: The Keras model
-            scale_factor: All pixels are multiplied by this amount.
-                Is thus equal to the difference between the
-                maximal and minimal pixel values.
-            brightness_factor: This amount is added to all pixels.
-                Is thus equal to the minimum pixel value.
+            model: A Keras model to visualise
+            scale_factor: All pixels are multiplied by this amount. Used when generating
+                the random initial images.Controls the difference
+                between the maximal and minimal pixel values.
+            brightness_factor: This amount is added to all pixels thus equal.
+                Used when generating the random initial images. Controls the
+                minimum pixel value.
         """
         self.model = model
         self.scale_factor = scale_factor
