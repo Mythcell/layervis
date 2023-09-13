@@ -25,7 +25,9 @@ from matplotlib.figure import Figure
 from skimage.filters import gaussian
 import os
 
-from .utils import get_blank_image, get_layer_object, obtain_reasonable_figsize
+from layervis.utils import (
+    get_blank_image, get_layer_object, obtain_reasonable_figsize
+)
 
 class FilterWeights:
     """

@@ -23,8 +23,9 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import os
 
-from .utils import get_layer_object, obtain_reasonable_figsize, save_image
-
+from layervis.utils import (
+    get_layer_object, obtain_reasonable_figsize, save_image
+)
 
 class FeatureMaps:
     """

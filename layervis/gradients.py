@@ -28,7 +28,7 @@ from matplotlib.figure import Figure
 from skimage.filters import gaussian
 import os
 
-from .utils import (
+from layervis.utils import (
     get_blank_image, get_layer_object,
     highest_mean_filter, obtain_reasonable_figsize
 )
@@ -42,7 +42,8 @@ class GradCAM():
     """
 
     def __init__(self, model: keras.Model):
-        """Initialises a GradCAM object to be used with the given model.
+        """
+        Initialises a GradCAM object to be used with the given model.
 
         Args:
             model: The keras Model to visualise.
@@ -782,35 +783,284 @@ class ClassModel():
 
 class GuidedBackpropagation():
     """
-    Class for visualising saliency maps with guided backpropagation
+    Class for visualising saliency maps with guided backpropagation.
 
-    TODO
+    Attributes:
+        model: The Keras model to visualise.
+        invalid_layers: Tuple of layers.Layer objects to ignore when plotting saliency
+            maps with plot_layer_saliency_maps.
     """
 
     def __init__(self, model: keras.Model):
         """Instantiates a GuidedBackpropagation object to be used with the given model.
 
         Args:
-            model: A Keras model.
+            model: A Keras model to visualise.
         """
         self.model = model
+        self.invalid_layers: tuple[layers.Layer] = (layers.InputLayer,)
 
-    
-    def plot_saliency_map(
-            self, image: tf.Tensor | np.ndarray, layer: int | str) -> Figure:
+    @tf.custom_gradient
+    def guided_relu(x):
         """
-        Plot a saliency map by applying guided backpropagation from the given layer.
+        Custom gradient to apply for guided backpropagation.
         """
+        def grad(dy):
+            return tf.cast(dy > 0, 'float32') * tf.cast(x > 0, 'float32') * dy
+        return tf.nn.relu(x), grad
+
+
+    def get_saliency_map(
+            self, input_image: tf.Tensor | np.ndarray, class_index: int = None,
+            layer: int | str | layers.Layer = None,
+            saliency_mode: str = 'norm') -> np.ndarray:
+        """
+        Returns saliency map with guided backpropagation.
+
+        Args:
+            input_image: Input image tensor
+            class_index: Class / output channel to visualise the saliency map for.
+                If set to None, will visualise the channel with the highest mean
+                activation. Default is None.
+            layer: The layer from which to visualise the gradients. Can be
+                specified either by a layer index (int) or layer name (str).
+                Default is None, which specifies the last Conv2D layer.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'norm'.
+
+        Returns:
+            np.ndarray of the normalised saliency map.
+        """
+        if not isinstance(input_image, tf.Tensor):
+            input_image = tf.convert_to_tensor(input_image)
+        if layer is None:
+            for l in self.model.layers[::-1]:
+                if isinstance(l, layers.Conv2D):
+                    layer = l
+                    break
+        else:
+            layer = get_layer_object(self.model, layer)
+        # create new model and replace all relus with guided_relus.
+        keras.backend.clear_session()
+        gbmodel = keras.Model(
+            inputs=self.model.inputs, outputs=layer.output, name='gbmodel'
+        )
+        for l in gbmodel.layers:
+            if (
+                (hasattr(l, 'activation') and l.activation == keras.activations.relu)
+                or isinstance(l, layers.ReLU)
+            ):
+                l.activation = self.guided_relu
+        with tf.GradientTape() as tape:
+            tape.watch(input_image)
+            pred = gbmodel(input_image)
+            if class_index is None:
+                class_index = highest_mean_filter(pred)
+            loss = pred[..., class_index]
+        saliency = tf.squeeze(tape.gradient(loss, input_image)).numpy()
+        if saliency_mode == 'abs':
+            saliency = np.abs(saliency)
+        elif saliency_mode == 'pos':
+            saliency = np.maximum(saliency, 0)
+        elif saliency_mode == 'norm':
+            saliency = (
+                (saliency - np.min(saliency))
+                / (np.ptp(saliency) + keras.backend.epsilon())
+            )
+        return saliency
 
     
     def plot_saliency_maps(
-            self, image: tf.Tensor | np.ndarray, layers: list[int | str] = []) -> None:
+            self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
+            layer: int | str | tf.Tensor = None, saliency_mode: str = 'norm',
+            figscale: float = 2, dpi: float = 100, colormap: str = 'binary_r',
+            include_class_titles: bool = True, textcolor: str = 'white',
+            facecolor: str = 'black', save_dir: str = 'guided_backprop',
+            save_str: str = '', save_format: str = 'png', fig_aspect: str = 'uniform',
+            fig_orient: str = 'h') -> None:
         """
-        Plot and save saliency maps using guided backpropagation from either the list
-        of provided layers, or all suitable layers.
+        Plot and save saliency maps using guided backpropagation for the given class
+        indices with respect to the specified layer.
 
         Args:
-            image (np.array): An input image of shape (1,width,height,depth).
-            layers (list): List of layers to visualise. Elements can be either integers
-                specifiying the layer index, or strings specifying the layer by name.
+            input_image: An input image of shape (1,width,height,depth).
+            class_indices: Classes / output channels to visualise the saliency map for.
+                If set to an empty list, will automatically plot saliency
+                maps for all output channels of the provided layer. Specifying None
+                as a class will instead visualise the channel with the highest mean
+                activation.
+            layer: The layer from which to visualise the gradients. Can be
+                specified either by a layer index (int) or layer name (str).
+                Default is None, which specifies the last Conv2D layer.
+            saliency_mode: One of 'all', 'abs' or 'pos'. Specifies whether to visualise
+                the gradients as-is (all), the absolute values of the gradients (abs),
+                or only all nonnegative values (pos). Default is 'all'.
+            figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
+            dpi: Base figure resolution. Default is 100.
+            colormap: Colormap to use for the saliency map. Default is 'binary_r'.
+            include_class_titles: Whether to title each subplot with the class index.
+                Default is True.
+            textcolor: Text color to use for the subplot titles. Default is 'white'.
+            facecolor: Figure background colour, passed to fig.savefig.
+                Default is 'black'.
+            save_dir: Directory to save the saliency maps. Default is 'guided_backprop'.
+            save_str: Base output filename for each plot. Plots are saved with the
+                filename {save_str}{layer.name}.{save_format}. Default is ''.
+            save_format: Format to save the image with (e.g. 'jpg','png',etc.).
+                Default is 'png'.
+            fig_aspect: One of 'uniform' or 'wide', controls the aspect ratio
+                of the figure. Use 'uniform' for squarish plots.
+                and 'wide' for rectangular. Default is 'uniform'.
+            fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
+                will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
         """
+        try:
+            os.mkdir(save_dir)
+        except FileExistsError:
+            pass
+
+        if not isinstance(input_image, tf.Tensor):
+            input_image = tf.convert_to_tensor(input_image)
+        if layer is None:
+            for l in self.model.layers[::-1]:
+                if isinstance(l, layers.Conv2D):
+                    layer = l
+                    break
+        else:
+            layer = get_layer_object(self.model, layer)
+        if len(class_indices) == 0:
+            class_indices = list(range(layer.output_shape[-1]))
+
+        keras.backend.clear_session()
+        gbmodel = keras.Model(
+            inputs=self.model.inputs, outputs=layer.output, name='gbmodel'
+        )
+        for l in gbmodel.layers:
+            if (
+                (hasattr(l, 'activation') and l.activation == keras.activations.relu)
+                or isinstance(l, layers.ReLU)
+            ):
+                l.activation = self.guided_relu
+        with tf.GradientTape(persistent=True) as tape:
+            tape.watch(input_image)
+            pred = gbmodel(input_image)
+
+        nrows, ncols = obtain_reasonable_figsize(
+            num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
+        )
+        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        if include_class_titles:
+            fig.subplots_adjust(wspace=0.05, hspace=0.2)
+        else:
+            fig.subplots_adjust(wspace=0.05, hspace=0.05)
+
+        for i, ci in enumerate(class_indices):
+            fig.add_subplot(nrows, ncols, i+1)
+            with tape:
+                loss = (
+                    pred[..., highest_mean_filter(pred)] if ci is None
+                    else pred[..., ci]
+                )
+            saliency = tf.squeeze(tape.gradient(loss, input_image)).numpy()
+            if saliency_mode == 'abs':
+                saliency = np.abs(saliency)
+            elif saliency_mode == 'pos':
+                saliency = np.maximum(saliency, 0)
+            elif saliency_mode == 'norm':
+                saliency = (
+                    (saliency - np.min(saliency))
+                    / (np.ptp(saliency) + keras.backend.epsilon())
+                )
+            plt.imshow(saliency, cmap=colormap)
+            plt.axis('off')
+            if include_class_titles:
+                plt.title(f'{ci}', c=textcolor)
+
+        del tape # important!
+        fig.savefig(
+            os.path.join(
+                save_dir, f'{save_str}{layer.name}.{save_format}'
+            ),
+            format=save_format, facecolor=facecolor, bbox_inches='tight'
+        )
+        fig.clear()
+        plt.close(fig)
+
+
+    def plot_saliency_maps_layers(
+            self, input_image: tf.Tensor | np.ndarray,
+            layers_list: list[int | str | layers.Layer] = [],
+            class_indices: list[int] = [], max_classes: int = 1024,
+            saliency_mode: str = 'norm', figscale: float = 2, dpi: float = 100,
+            colormap: str = 'binary_r', include_class_titles: bool = True,
+            textcolor: str = 'white', facecolor: str = 'black',
+            save_dir: str = 'guided_backprop', save_str: str = '',
+            save_format: str = 'png', fig_aspect: str = 'uniform',
+            fig_orient: str = 'h') -> None:
+        """
+        Plot and save saliency maps using guided backpropagation for the given class
+        indices with respect to each layer in the specified list of layers.
+
+        Args:
+            input_image: An input image of shape (1,width,height,depth).
+            layers_list: List of layers to plot saliency maps for. Can be a layer index,
+                layer name or layer object. If empty, will automatically
+                create saliency maps for all layers in the model.
+            class_indices: Classes / output channels to visualise the saliency map for.
+                If set to an empty list, will automatically plot saliency
+                maps for all output channels of the provided layer. Specifying None
+                as a class will instead visualise the channel with the highest mean
+                activation.
+            max_classes: Skips layers containing more than this number of output
+                classes / channels. Useful for avoiding huge figures for large Dense
+                layers. Default is 1024.
+            saliency_mode: One of 'all', 'abs' or 'pos'. Specifies whether to visualise
+                the gradients as-is (all), the absolute values of the gradients (abs),
+                or only all nonnegative values (pos). Default is 'all'.
+            figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
+            dpi: Base figure resolution. Default is 100.
+            colormap: Colormap to use for the saliency map. Default is 'binary_r'.
+            include_class_titles: Whether to title each subplot with the class index.
+                Default is True.
+            textcolor: Text color to use for the subplot titles. Default is 'white'.
+            facecolor: Figure background colour, passed to fig.savefig.
+                Default is 'black'.
+            save_dir: Directory to save the saliency maps. Default is 'guided_backprop'.
+            save_str: Base output filename for each plot. Plots are saved with the
+                filename {save_str}{layer.name}.{save_format}. Default is ''.
+            save_format: Format to save the image with (e.g. 'jpg','png',etc.).
+                Default is 'png'.
+            fig_aspect: One of 'uniform' or 'wide', controls the aspect ratio
+                of the figure. Use 'uniform' for squarish plots.
+                and 'wide' for rectangular. Default is 'uniform'.
+            fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
+                will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
+        """
+        try:
+            os.mkdir(save_dir)
+        except FileExistsError:
+            pass
+        
+        if len(layers_list) == 0:
+            layers_list = [
+                l for l in self.model.layers if not isinstance(l, self.invalid_layers)
+            ]
+        else:
+            layers_list = [get_layer_object(self.model, l) for l in layers_list]
+        for l in layers_list:
+            if l.output_shape[-1] > max_classes:
+                print(
+                    f'Skipping layer {l.name} '
+                    f'as it has more than {max_classes} output channels'
+                )
+                continue
+            self.plot_saliency_maps(
+                input_image=input_image, class_indices=class_indices, layer=l,
+                saliency_mode=saliency_mode, figscale=figscale, dpi=dpi,
+                colormap=colormap, include_class_titles=include_class_titles,
+                textcolor=textcolor, facecolor=facecolor, save_dir=save_dir,
+                save_str=save_str, save_format=save_format,
+                fig_aspect=fig_aspect, fig_orient=fig_orient
+            )
