@@ -21,11 +21,10 @@ from keras import layers
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from tqdm import tqdm
 import os
 
-from layervis.utils import (
-    get_layer_object, obtain_reasonable_figsize, save_image
-)
+import layervis.utils as lvutils
 
 class FeatureMaps:
     """
@@ -37,7 +36,7 @@ class FeatureMaps:
 
     def __init__(
             self, model: keras.Model,
-            valid_layers: tuple[layers.Layer] = None):
+            valid_layers: tuple[layers.Layer, ...] = None):
         """
         Initialises a FeatureMaps object with the provided model and layers to extract.
 
@@ -77,13 +76,14 @@ class FeatureMaps:
         Raises:
             ValueError if the provided layer is not a valid layer.
         """
-        layer = get_layer_object(self.model, layer)
+        layer = lvutils.get_layer_object(self.model, layer)
         if not isinstance(layer, self.valid_layers):
             raise ValueError(f'Invalid layer, must be one of {self.valid_layers}')
+        input_image = tf.convert_to_tensor(input_image)
         
         keras.backend.clear_session()
         feature_model = keras.Model(inputs=self.model.input, outputs=layer.output)
-        feature_maps = feature_model.predict(input_image, verbose=0)
+        feature_maps = feature_model(input_image).numpy()
         if len(feature_maps.shape) != 4:
             print(
                 f'Skipping layer {layer.name} '
@@ -133,7 +133,7 @@ class FeatureMaps:
             return None
         # determine figure dimensions
         nmaps = feature_maps.shape[-1]
-        nrows, ncols = obtain_reasonable_figsize(
+        nrows, ncols = lvutils.obtain_reasonable_figsize(
             nmaps, aspect_mode=fig_aspect, orient=fig_orient
         )
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
@@ -154,13 +154,13 @@ class FeatureMaps:
 
     def plot_feature_maps(
             self, input_image: tf.Tensor | np.ndarray,
-            layers: list[int | str | layers.Layer] = [],
+            layers_list: list[int | str | layers.Layer] = [],
             plot_input: bool = True, figscale: float = 1, dpi: float = 100,
             colormap: str = 'cividis', facecolor: str = 'white',
             fig_aspect: str = 'uniform', fig_orient: str = 'h',
             save_dir: str = 'feature_maps', save_format: str = 'png', prefix: str = '',
             suffix: str = '', include_titles: bool = False,
-            include_corner_axis: bool = False, verbose: bool = True) -> None:
+            include_corner_axis: bool = False) -> None:
         """
         Plots and saves all feature maps for all convolutional and pooling
         layers with respect to the provided (single) test image. Ensure that
@@ -171,7 +171,7 @@ class FeatureMaps:
         Args:
             input_image: Single input with which to generate feature maps.
                 Its shape must be the same as the model's input shape.
-            layers: List of layer names and/or indices of the layers to extract
+            layers_list: List of layer names and/or indices of the layers to extract
                 features from. If empty, the code will process all valid layers.
             plot_input: Whether to also plot the input image. Defaults to True.
             figscale: Base figure size multiplier, passed to plt.figure. Default is 1.
@@ -194,14 +194,12 @@ class FeatureMaps:
                 of the respective layer. Defaults to True.
             include_corner_axis: Whether to display axes on the
                 bottom-left subplot of each figure. Defaults to False.
-            verbose: Whether to print each filename as it is saved. Defaults to True.
         """
-        if len(layers) == 0:
-            layers = [
-                i.name for i in self.model.layers if isinstance(i, self.valid_layers)
-            ]
-        else:
-            layers = [get_layer_object(self.model, l).name for l in layers]
+        layers_list = (
+            [i for i in self.model.layers if isinstance(i, self.valid_layers)]
+            if len(layers_list) == 0
+            else [lvutils.get_layer_object(self.model, l) for l in layers]
+        )
 
         try:
             os.mkdir(save_dir)
@@ -209,14 +207,14 @@ class FeatureMaps:
             pass
         
         if plot_input:
-            save_image(
+            lvutils.save_image(
                 image=input_image[0, ...], figsize=figscale*6, dpi=dpi,
                 colormap=colormap, facecolor=facecolor, save_dir=save_dir,
                 filename=f'input{suffix}', save_format=save_format,
                 figure_title=('input' if include_titles else None),
-                include_axis=include_corner_axis, verbose=verbose
+                include_axis=include_corner_axis
             )
-        for layer in layers:
+        for layer in tqdm(layers_list):
             fig = self.plot_feature_map(
                 input_image=input_image, layer=layer, figscale=figscale, dpi=dpi,
                 colormap=colormap, fig_aspect=fig_aspect, fig_orient=fig_orient,
@@ -226,12 +224,10 @@ class FeatureMaps:
                 continue
             file_name = os.path.join(
                 f'{save_dir}',
-                f'{prefix}{layer}{suffix}.{save_format}'
+                f'{prefix}{layer.name}{suffix}.{save_format}'
             )
             fig.savefig(
                 file_name, format=save_format, facecolor=facecolor, bbox_inches='tight'
             )
-            if verbose:
-                print(f'Saved {file_name}')
             fig.clear()
             plt.close(fig)

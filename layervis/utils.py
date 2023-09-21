@@ -18,12 +18,37 @@
 import tensorflow as tf
 from tensorflow import keras
 from keras import layers
+from keras.preprocessing.image import array_to_img, img_to_array
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+@tf.custom_gradient
+def guided_relu(x):
+    """
+    Custom gradient to apply for guided backpropagation.
+    """
+    def grad(dy):
+        return tf.cast(dy > 0, 'float32') * tf.cast(x > 0, 'float32') * dy
+    return tf.nn.relu(x), grad
+
+class GuidedReLU(layers.Layer):
+    """
+    Custom layers.Layer class for guided_relu activation.
+    It is intended to replace existing ReLU layers for guided backpropagation.
+    """
+
+    def __init__(self, **kwargs):
+        """Instantiate a custom GuidedReLU layer for guided backpropagation."""
+        super(GuidedReLU, self).__init__(**kwargs)
+    
+    def call(self, inputs):
+        """Use guided relu instead of the normal relu"""
+        return guided_relu(inputs)
+    
+
 def get_blank_image(
-        shape: tuple[int], scale_factor: float = 0.2,
+        shape: tuple[int, ...], scale_factor: float = 0.2,
         brightness_factor: float = 0.4) -> tf.Tensor:
     """
     Creates a blank, visually neutral image (predominantly gray).
@@ -80,10 +105,19 @@ def get_layer_object(
         raise TypeError(f'{layer_spec} is not a valid layer specifier.')
 
 
+def get_last_conv2d_layer(model: keras.Model) -> layers.Layer:
+    """
+    Returns the last 2D convolutional layer in the given model.
+    """
+    for l in model.layers[::-1]:
+        if isinstance(l, layers.Conv2D):
+            return l
+
+
 def save_image(
         image: tf.Tensor | np.ndarray, figsize: float, dpi: float, colormap: str,
         facecolor: str, save_dir: str, filename: str, save_format: str,
-        figure_title: str, include_axis: bool, verbose: bool) -> None:
+        figure_title: str, include_axis: bool) -> None:
     """
     Plots and saves the given image according to the provided
     figure and filename parameters.
@@ -102,7 +136,6 @@ def save_image(
         figure_title: Title to add to the figure.
             Note that no title is added if this is set to None or ''
         include_axis: Whether to include an axis.
-        verbose: Whether to include print statements.
     """
     if isinstance(image, tf.Tensor):
         image = image.numpy()
@@ -115,8 +148,6 @@ def save_image(
     if not include_axis:
         plt.axis('off')
     file_name = os.path.join(save_dir, f'{filename}.{save_format}')
-    if verbose:
-        print(f'Saving to {file_name}')
     fig.savefig(
         file_name, format=save_format,
         facecolor=facecolor, bbox_inches='tight'
@@ -125,7 +156,7 @@ def save_image(
     plt.close(fig)
 
 
-def euclidean_dist_2d(a: tuple[float], b: tuple[float]) -> float:
+def euclidean_dist_2d(a: tuple[float, float], b: tuple[float, float]) -> float:
     """
     Returns the Euclidean distance between a and b where a, b are 2D coordinates.
     Curiously, this is around 10% faster than np.linalg.norm()
@@ -135,7 +166,7 @@ def euclidean_dist_2d(a: tuple[float], b: tuple[float]) -> float:
 
 def obtain_reasonable_figsize(
         num_subplots: int, aspect_mode: str = 'uniform',
-        orient: str = 'h') -> tuple[int]:
+        orient: str = 'h') -> tuple[int, int]:
     """
     Automatically determines somewhat aesthetically pleasing figure dimensions
     given the required number of subplots to plot. Dimensions will be a tuple

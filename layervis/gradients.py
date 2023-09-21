@@ -26,12 +26,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from skimage.filters import gaussian
+from tqdm import tqdm
 import os
 
-from layervis.utils import (
-    get_blank_image, get_layer_object,
-    highest_mean_filter, obtain_reasonable_figsize
-)
+import layervis.utils as lvutils
 
 class GradCAM():
     """
@@ -53,7 +51,8 @@ class GradCAM():
 
     def generate_heatmap(
             self, input_image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str | layers.Layer = None) -> np.ndarray:
+            layer: int | str | layers.Layer = None,
+            resize: bool = True) -> np.ndarray:
         """
         Generates a class activation heatmap using Grad-CAM for the given input image
         and prediction class index. Can optionally specify a layer (uses the last
@@ -65,18 +64,19 @@ class GradCAM():
             layer: The layer from which to visualise the gradients. Can be
                 specified either by a layer index (int) or layer name (str).
                 Default is None, which specifies the last Conv2D layer.
+            resize: Whether to resize the heatmap to match the size of the input image.
+                Default is True.
+
+        Returns:
+            The class activation heatmap as a numpy array.
 
         Raises:
             ValueError if the specified layer has an invalid shape.
         """
-        # default value is to take gradients w.r.t the final convolutional layer
-        if layer is None:
-            for l in self.model.layers[::-1]:
-                if isinstance(l, layers.Conv2D):
-                    layer = l
-                    break
-        else:
-            layer = get_layer_object(self.model, layer)
+        layer = (
+            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            else lvutils.get_layer_object(self.model, layer)
+        )
         if len(layer.output_shape) != 4:
             raise ValueError(
                 f'Layer {layer.name} has an invalid shape. '
@@ -97,40 +97,22 @@ class GradCAM():
             (heatmap - np.min(heatmap))
             / (np.ptp(heatmap) + keras.backend.epsilon())
         )
-        return np.uint8(heatmap*255)
-
-
-    def merge_heatmap(
-            self, input_image: tf.Tensor | np.ndarray, heatmap: np.ndarray,
-            colormap: str = 'jet', heatmap_alpha: float = 0.42) -> np.ndarray:
-        """
-        Merge the provided heatmap with the given input image. Returns a new image.
-
-        Args:
-            input_image: The desired input image.
-            class_index: Index corresponding to the predicted class to visualise.
-            layer: The layer from which to visualise the gradients. Can be
-                specified either by a layer index (int) or layer name (str).
-                Default is None, which specifies the last Conv2D layer.
-            colormap: Colormap to use for the activation heatmap. Must be a valid
-                matplotlib colormap string. Default is 'jet'.
-            heatmap_alpha: Opacity of the overlaid heatmap. Default is 0.42.
-
-        Returns:
-            An image of the heatmap merged with the input image.
-        """
-        cmap_colors = plt.get_cmap(colormap)(np.arange(256))[:, :3]
-        heatmap = array_to_img(cmap_colors[heatmap])
-        heatmap = heatmap.resize((input_image.shape[1], input_image.shape[2]))
-        heatmap = img_to_array(heatmap)/255.
-        heatmap = input_image[0, ...] + heatmap * heatmap_alpha
-        return np.array(array_to_img(heatmap))
+        if resize:
+            target_size = input_image.shape[1]
+            heatmap = tf.convert_to_tensor(heatmap)[..., tf.newaxis] # add channel dim
+            heatmap = tf.image.resize(
+                images=heatmap, size=[target_size, target_size], method='bicubic'
+            )
+            heatmap = tf.squeeze(heatmap).numpy()
+        return heatmap
 
 
     def plot_heatmap(
             self, input_image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str | layers.Layer = None, colormap: str = 'jet',
-            heatmap_alpha: float = 0.42, figsize: float = 6, dpi: float = 100) -> Figure:
+            layer: int | str | layers.Layer = None,
+            overlay: bool = True, overlay_alpha: float = 0.5,
+            heatmap_colormap: str = 'jet', image_colormap: str = 'binary_r',
+            figsize: float = 6, dpi: float = 100) -> Figure:
         """
         Generates and plots a class activation heatmap using Grad-CAM for the
         given input image, prediction index and layer.
@@ -141,9 +123,12 @@ class GradCAM():
             layer: The layer from which to visualise the gradients. Can be
                 specified either by a layer index (int) or layer name (str).
                 Default is None, which specifies the last Conv2D layer.
-            colormap: Colormap to use for the activation heatmap. Must be a valid
-                matplotlib colormap string. Default is 'jet'.
-            heatmap_alpha: Opacity of the overlaid heatmap. Default is 0.42.
+            overlay: Whether to overlay the heatmap over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
+                Default is 0.5. Has no effect for image_mode != 'overlay'.
+            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
             figsize: Figure size, passed to plt.figure. Default is 10.
             dpi: Base resolution, passed to plt.figure. Default is 100.
         
@@ -151,22 +136,23 @@ class GradCAM():
             The figure with the desired heatmap.
         """
         heatmap = self.generate_heatmap(
-            input_image=input_image, class_index=class_index, layer=layer,
-        )
-        heatmap = self.merge_heatmap(
-            input_image=input_image, heatmap=heatmap,
-            colormap=colormap, heatmap_alpha=heatmap_alpha
+            input_image=input_image, class_index=class_index, layer=layer, resize=True
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
-        plt.imshow(heatmap)
+        if overlay:
+            plt.imshow(input_image[0], cmap=image_colormap)
+            plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+        else:
+            plt.imshow(heatmap, cmap=heatmap_colormap)
         plt.axis('off')
         return fig
     
 
     def plot_heatmaps(
             self, input_image: np.ndarray, class_indices: list[int] = [],
-            layer: int | str | layers.Layer = None, colormap: str = 'jet',
-            heatmap_alpha: float = 0.42, include_class_titles: bool = True,
+            layer: int | str | layers.Layer = None, overlay: bool = True,
+            overlay_alpha: float = 0.5, heatmap_colormap: str = 'jet',
+            image_colormap: str = 'binary_r', include_class_titles: bool = True,
             figscale: float = 2, dpi: float = 100, textcolor: str = 'white',
             facecolor: str = 'black', save_dir: str = 'heatmaps', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
@@ -181,8 +167,12 @@ class GradCAM():
             layer: The layer from which to visualise the gradients. Can be
                 specified either by a layer index (int) or layer name (str).
                 Default is None, which specifies the last Conv2D layer.
-            colormap: Colormap to use for the activation heatmap. Default is 'jet'.
-            heatmap_alpha: Opacity of the overlaid heatmap. Default is 0.4.
+            overlay: Whether to overlay the heatmap over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
+                Default is 0.5. Has no effect for image_mode != 'overlay'.
+            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
             include_class_titles: Whether to title each subplot with the class index.
                 Default is True.
             figscale: Base figure scale multiplier, passed to plt.figure. Default is 2.
@@ -210,7 +200,7 @@ class GradCAM():
         if len(class_indices) == 0:
             class_indices = list(range(self.model.output_shape[-1]))
 
-        nrows, ncols = obtain_reasonable_figsize(
+        nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
@@ -222,13 +212,13 @@ class GradCAM():
         for i, ci in enumerate(class_indices):
             fig.add_subplot(nrows, ncols, i+1)
             heatmap = self.generate_heatmap(
-                input_image=input_image, class_index=ci, layer=layer
+                input_image=input_image, class_index=ci, layer=layer, resize=True
             )
-            heatmap = self.merge_heatmap(
-                input_image=input_image, heatmap=heatmap,
-                colormap=colormap, heatmap_alpha=heatmap_alpha
-            )
-            plt.imshow(heatmap)
+            if overlay:
+                plt.imshow(input_image[0], cmap=image_colormap)
+                plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+            else:
+                plt.imshow(heatmap, cmap=heatmap_colormap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -260,12 +250,13 @@ class GradientSaliency():
             model: A keras Model to visualise.
         """
         self.model = model
-        self.invalid_layers: tuple[layers.Layer] = (layers.InputLayer,)
+        self.invalid_layers: tuple[layers.Layer, ...] = (layers.InputLayer,)
 
 
     def get_saliency_map(
             self, input_image: tf.Tensor | np.ndarray, class_index: int = None,
-            layer: int | str | layers.Layer = -1) -> np.ndarray:
+            layer: int | str | layers.Layer = -1, saliency_mode: str = 'abs',
+            force_rgb: bool = False) -> np.ndarray:
         """
         Returns a gradient-based saliency map for the given input image. You can
         optionally specify a class index to visualise and/or layer to backpropagate from.
@@ -279,13 +270,19 @@ class GradientSaliency():
                 activation. Default is None.
             layer: The layer to backpropagate from. Can be a layer index, layer name
                 or layers.Layer object. Default is -1, i.e. the output layer.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'abs'.
+            force_rgb: Whether to keep the saliency map as an RGB image. Only affects
+                models with RGB input images. Default is False.
 
         Returns:
-            A tf.Tensor with the desired gradient-based saliency map.
+            A tf.Tensor with the gradient-based saliency map.
         """
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
-        layer = get_layer_object(self.model, layer)
+        layer = lvutils.get_layer_object(self.model, layer)
         
         keras.backend.clear_session()
         smodel = keras.Model(
@@ -295,24 +292,36 @@ class GradientSaliency():
             tape.watch(input_image)
             pred = smodel(input_image)
             if class_index is None:
-                class_index = highest_mean_filter(pred)
+                class_index = lvutils.highest_mean_filter(pred)
             loss = pred[..., class_index]
-        grads = tf.squeeze(tape.gradient(loss, input_image)).numpy()
-        grads = (grads - np.min(grads)) / (np.ptp(grads) + keras.backend.epsilon())
-        return grads
+        saliency = tape.gradient(loss, input_image)[0, ...]
+        if saliency.ndim > 2 and not force_rgb:
+            saliency = tf.reduce_mean(saliency, axis=-1)
+        saliency = saliency.numpy()
+        if saliency_mode == 'abs':
+            saliency = np.abs(saliency)
+        elif saliency_mode == 'pos':
+            saliency = np.maximum(saliency, 0)
+        elif saliency_mode == 'norm':
+            saliency = (
+                (saliency - np.min(saliency))
+                / (np.ptp(saliency) + keras.backend.epsilon())
+            )
+        return saliency
 
 
     def plot_saliency_maps(
             self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
-            layer: int | str | layers.Layer = -1, image_mode: str = 'overlay',
-            overlay_alpha: float = 0.5, figscale: float = 2, dpi: float = 100,
-            image_cmap: str = 'binary_r', overlay_cmap: str = 'jet',
-            include_class_titles: bool = True, textcolor: str = 'white',
-            facecolor: str = 'black', save_dir: str = 'saliency_maps',
-            save_str: str = '', save_format: str = 'png',
-            fig_aspect: str = 'uniform', fig_orient: str = 'h') -> None:
+            layer: int | str | layers.Layer = -1, saliency_mode: str = 'abs',
+            saliency_colormap: str = 'jet', overlay: bool = True,
+            overlay_alpha: float = 0.5, include_class_titles: bool = False,
+            figscale: float = 2, dpi: float = 100, image_colormap: str = 'binary_r',
+            textcolor: str = 'white', facecolor: str = 'black',
+            save_dir: str = 'saliency_maps', save_str: str = '',
+            save_format: str = 'png', fig_aspect: str = 'uniform',
+            fig_orient: str = 'h') -> None:
         """
-        Plot gradient-based saliency map for the given input images. You can optionally
+        Plot gradient-based saliency maps for the given input images. You can optionally
         specify class indices to visualise and/or a layer to backpropagate from.
         By default, it will backpropagate from the final layer with respect to
         the channel with the highest mean activation.
@@ -326,20 +335,21 @@ class GradientSaliency():
                 activation.
             layer: The layer to backpropagate from. Can be a layer index, layer name
                 or layers.Layer object. Default is -1, i.e. the output layer.
-            image_mode: One of 'overlay', 'saliency' or 'image'. If 'overlay',
-                plots the image overlaid with the saliency heatmap. The other two options
-                plot just the saliency map or image by itself respectively.
-                Default is 'overlay'.
-            overlay_alpha: Alpha for the overlaid saliency heatmap, passed to
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'abs'.
+            saliency_colormap: The colormap to use for the saliency map.
+                Default is 'jet'.
+            overlay: Whether to overlay the saliency map over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid saliency map, passed to
                 plt.imshow. Default is 0.5. Has no effect for image_mode != 'overlay'.
             include_class_titles: Whether to title each subplot with the class index.
-                Default is True.
+                Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution, passed to plt.figure.
-            image_cmap: The colormap to use for the image (ignored for RGB images).
-                Default is 'binary_r'.
-            overlay_cmap: The colormap to use for the saliency heatmap.
-                Default is 'jet'.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background color. Default is 'black'.
             save_dir: Directory to save the plots to. Default is 'saliency_maps'.
@@ -360,7 +370,7 @@ class GradientSaliency():
 
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
-        layer = get_layer_object(self.model, layer)
+        layer = lvutils.get_layer_object(self.model, layer)
         if len(class_indices) == 0:
             class_indices = list(range(layer.output_shape[-1]))
 
@@ -372,7 +382,7 @@ class GradientSaliency():
             tape.watch(input_image)
             pred = smodel(input_image)
 
-        nrows, ncols = obtain_reasonable_figsize(
+        nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
@@ -386,18 +396,27 @@ class GradientSaliency():
             # use existing tape instead of repeating forward passes
             with tape:
                 loss = (
-                    pred[..., highest_mean_filter(pred)] if ci is None
+                    pred[..., lvutils.highest_mean_filter(pred)] if ci is None
                     else pred[..., ci]
                 )
-            grads = tf.squeeze(tape.gradient(loss, input_image)).numpy()
-            grads = (grads - np.min(grads)) / (np.ptp(grads) + keras.backend.epsilon())
-
-            if image_mode != 'saliency':
-                plt.imshow(input_image[0], cmap=image_cmap)
-                if image_mode == 'overlay':
-                    plt.imshow(grads, alpha=overlay_alpha, cmap=overlay_cmap)
+            saliency = tape.gradient(loss, input_image)[0, ...]
+            if saliency.ndim > 2:
+                saliency = tf.reduce_mean(saliency, axis=-1)
+            saliency = saliency.numpy()
+            if saliency_mode == 'abs':
+                saliency = np.abs(saliency)
+            elif saliency_mode == 'pos':
+                saliency = np.maximum(saliency, 0)
+            elif saliency_mode == 'norm':
+                saliency = (
+                    (saliency - np.min(saliency))
+                    / (np.ptp(saliency) + keras.backend.epsilon())
+                )
+            if overlay:
+                plt.imshow(input_image[0], cmap=image_colormap)
+                plt.imshow(saliency, cmap=saliency_colormap, alpha=overlay_alpha)
             else:
-                plt.imshow(grads, cmap=overlay_cmap)
+                plt.imshow(saliency, cmap=saliency_colormap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -417,12 +436,12 @@ class GradientSaliency():
             self, input_image: tf.Tensor | np.ndarray,
             layers_list: list[int | str | layers.Layer] = [],
             class_indices: list[int] = [], max_classes: int = 1024,
-            image_mode: str = 'overlay', overlay_alpha: float = 0.5,
-            figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
-            overlay_cmap: str = 'jet', include_class_titles: bool = False,
-            textcolor: str = 'white', facecolor: str = 'black',
-            save_dir: str = 'saliency_maps', save_str: str = '',
-            save_format: str = 'png', fig_aspect: str = 'uniform',
+            saliency_mode: str = 'abs', saliency_colormap: str = 'jet',
+            overlay: bool = True, overlay_alpha: float = 0.5,
+            include_class_titles: bool = False, figscale: float = 2, dpi: float = 100,
+            image_colormap: str = 'binary_r', textcolor: str = 'white',
+            facecolor: str = 'black', save_dir: str = 'saliency_maps',
+            save_str: str = '', save_format: str = 'png', fig_aspect: str = 'uniform',
             fig_orient: str = 'h') -> None:
         """
         Plots and saves gradient-based saliency maps for the given input image
@@ -441,20 +460,21 @@ class GradientSaliency():
             max_classes: Skips layers containing more than this number of output
                 classes / channels. Useful for avoiding huge figures for large Dense
                 layers. Default is 1024.
-            image_mode: One of 'overlay', 'saliency' or 'image'. If 'overlay',
-                plots the image overlaid with the saliency heatmap. The other two options
-                plot just the saliency map or image by itself respectively.
-                Default is 'overlay'.
-            overlay_alpha: Alpha for the overlaid saliency heatmap, passed to
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'abs'.
+            saliency_colormap: The colormap to use for the saliency map.
+                Default is 'jet'.
+            overlay: Whether to overlay the saliency map over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid saliency map, passed to
                 plt.imshow. Default is 0.5. Has no effect for image_mode != 'overlay'.
+            include_class_titles: Whether to title each subplot with the class index.
+                Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution, passed to plt.figure.
-            image_cmap: The colormap to use for the image (ignored for RGB images).
-                Default is 'binary_r'.
-            overlay_cmap: The colormap to use for the saliency heatmap.
-                Default is 'jet'.
-            include_class_titles: Whether to title each subplot with the class index.
-                Default is True.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background colour, passed to fig.savefig.
                 Default is 'black'.
@@ -473,13 +493,12 @@ class GradientSaliency():
         except FileExistsError:
             pass
 
-        if len(layers_list) == 0:
-            layers_list = [
-                l for l in self.model.layers if not isinstance(l, self.invalid_layers)
-            ]
-        else:
-            layers_list = [get_layer_object(self.model, l) for l in layers_list]
-        for l in layers_list:
+        layers_list = (
+            [l for l in self.model.layers if not isinstance(l, self.invalid_layers)]
+            if len(layers_list) == 0
+            else [lvutils.get_layer_object(self.model, l) for l in layers_list]
+        )
+        for l in tqdm(layers_list):
             if l.output_shape[-1] > max_classes:
                 print(
                     f'Skipping layer {l.name} '
@@ -488,11 +507,12 @@ class GradientSaliency():
                 continue
             self.plot_saliency_maps(
                 input_image=input_image, class_indices=class_indices, layer=l,
-                image_mode=image_mode, overlay_alpha=overlay_alpha, figscale=figscale,
-                dpi=dpi, image_cmap=image_cmap, overlay_cmap=overlay_cmap,
-                include_class_titles=include_class_titles,
-                textcolor=textcolor, facecolor=facecolor, save_dir=save_dir,
-                save_str=save_str, save_format=save_format, fig_aspect=fig_aspect,
+                saliency_mode=saliency_mode, saliency_colormap=saliency_colormap,
+                overlay=overlay, overlay_alpha=overlay_alpha,
+                include_class_titles=include_class_titles, figscale=figscale,
+                dpi=dpi, image_colormap=image_colormap, textcolor=textcolor,
+                facecolor=facecolor, save_dir=save_dir, save_str=save_str,
+                save_format=save_format, fig_aspect=fig_aspect,
                 fig_orient=fig_orient
             )
 
@@ -616,7 +636,7 @@ class ClassModel():
         Returns:
             np.ndarray of the class model image.
         """
-        layer = get_layer_object(self.model, score_layer)
+        layer = lvutils.get_layer_object(self.model, score_layer)
         # only create the score model if it does not already exist
         # OR if the specified layer has changed
         # (mild performance boost when looping multiple classes)
@@ -627,7 +647,7 @@ class ClassModel():
             )
             self.score_layer = layer
 
-        image = get_blank_image(
+        image = lvutils.get_blank_image(
             shape=(1, *self.model.input_shape[1:]), scale_factor=self.scale_factor,
             brightness_factor=self.brightness_factor
         )
@@ -752,7 +772,7 @@ class ClassModel():
 
         if len(class_indices) == 0:
             class_indices = list(range(self.model.output_shape[-1]))
-        nrows, ncols = obtain_reasonable_figsize(
+        nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
@@ -798,24 +818,15 @@ class GuidedBackpropagation():
             model: A Keras model to visualise.
         """
         self.model = model
-        self.invalid_layers: tuple[layers.Layer] = (layers.InputLayer,)
-
-    @tf.custom_gradient
-    def guided_relu(x):
-        """
-        Custom gradient to apply for guided backpropagation.
-        """
-        def grad(dy):
-            return tf.cast(dy > 0, 'float32') * tf.cast(x > 0, 'float32') * dy
-        return tf.nn.relu(x), grad
-
+        self.invalid_layers: tuple[layers.Layer, ...] = (layers.InputLayer,)
+    
 
     def get_saliency_map(
             self, input_image: tf.Tensor | np.ndarray, class_index: int = None,
-            layer: int | str | layers.Layer = None,
-            saliency_mode: str = 'norm') -> np.ndarray:
+            layer: int | str | layers.Layer = None, saliency_mode: str = 'abs',
+            force_rgb: bool = False) -> np.ndarray:
         """
-        Returns saliency map with guided backpropagation.
+        Returns a saliency map using guided backpropagation.
 
         Args:
             input_image: Input image tensor
@@ -828,38 +839,40 @@ class GuidedBackpropagation():
             saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
                 to return the normalised saliency ('norm'), the absolute values of the
                 saliency ('abs'), only all nonnegative values ('pos'), or the saliency
-                as-is with no further normalisation (''). Default is 'norm'.
+                as-is with no further normalisation (''). Default is 'abs'.
+            force_rgb: Whether to keep the saliency map as an RGB image. Only affects
+                models with RGB input images. Default is False.
 
         Returns:
             np.ndarray of the normalised saliency map.
         """
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
-        if layer is None:
-            for l in self.model.layers[::-1]:
-                if isinstance(l, layers.Conv2D):
-                    layer = l
-                    break
-        else:
-            layer = get_layer_object(self.model, layer)
-        # create new model and replace all relus with guided_relus.
+        layer = (
+            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            else lvutils.get_layer_object(self.model, layer)
+        )
+        
         keras.backend.clear_session()
         gbmodel = keras.Model(
             inputs=self.model.inputs, outputs=layer.output, name='gbmodel'
         )
         for l in gbmodel.layers:
-            if (
-                (hasattr(l, 'activation') and l.activation == keras.activations.relu)
-                or isinstance(l, layers.ReLU)
-            ):
-                l.activation = self.guided_relu
+            if hasattr(l, 'activation') and l.activation == keras.activations.relu:
+                l.activation = lvutils.guided_relu
+            if isinstance(l, layers.ReLU):
+                l = lvutils.GuidedReLU(name=l.name)
+
         with tf.GradientTape() as tape:
             tape.watch(input_image)
             pred = gbmodel(input_image)
             if class_index is None:
-                class_index = highest_mean_filter(pred)
+                class_index = lvutils.highest_mean_filter(pred)
             loss = pred[..., class_index]
-        saliency = tf.squeeze(tape.gradient(loss, input_image)).numpy()
+        saliency = tape.gradient(loss, input_image)[0, ...]
+        if saliency.ndim > 2 and not force_rgb:
+            saliency = tf.reduce_mean(saliency, axis=-1)
+        saliency = saliency.numpy()
         if saliency_mode == 'abs':
             saliency = np.abs(saliency)
         elif saliency_mode == 'pos':
@@ -874,11 +887,13 @@ class GuidedBackpropagation():
     
     def plot_saliency_maps(
             self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
-            layer: int | str | tf.Tensor = None, saliency_mode: str = 'norm',
-            figscale: float = 2, dpi: float = 100, colormap: str = 'binary_r',
-            include_class_titles: bool = True, textcolor: str = 'white',
-            facecolor: str = 'black', save_dir: str = 'guided_backprop',
-            save_str: str = '', save_format: str = 'png', fig_aspect: str = 'uniform',
+            layer: int | str | tf.Tensor = None, saliency_mode: str = 'abs',
+            saliency_colormap: str = 'jet', overlay: bool = True,
+            overlay_alpha: float = 0.5, include_class_titles: bool = False,
+            figscale: float = 2, dpi: float = 100, image_colormap: str = 'binary_r',
+            textcolor: str = 'white', facecolor: str = 'black',
+            save_dir: str = 'guided_backprop', save_str: str = '',
+            save_format: str = 'png', fig_aspect: str = 'uniform',
             fig_orient: str = 'h') -> None:
         """
         Plot and save saliency maps using guided backpropagation for the given class
@@ -894,14 +909,21 @@ class GuidedBackpropagation():
             layer: The layer from which to visualise the gradients. Can be
                 specified either by a layer index (int) or layer name (str).
                 Default is None, which specifies the last Conv2D layer.
-            saliency_mode: One of 'all', 'abs' or 'pos'. Specifies whether to visualise
-                the gradients as-is (all), the absolute values of the gradients (abs),
-                or only all nonnegative values (pos). Default is 'all'.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'abs'.
+            saliency_colormap: The colormap to use for the saliency map.
+                Default is 'jet'.
+            overlay: Whether to overlay the saliency map over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid saliency map, passed to
+                plt.imshow. Default is 0.5. Has no effect for image_mode != 'overlay'.
+            include_class_titles: Whether to title each subplot with the class index.
+                Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution. Default is 100.
-            colormap: Colormap to use for the saliency map. Default is 'binary_r'.
-            include_class_titles: Whether to title each subplot with the class index.
-                Default is True.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background colour, passed to fig.savefig.
                 Default is 'black'.
@@ -923,13 +945,10 @@ class GuidedBackpropagation():
 
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
-        if layer is None:
-            for l in self.model.layers[::-1]:
-                if isinstance(l, layers.Conv2D):
-                    layer = l
-                    break
-        else:
-            layer = get_layer_object(self.model, layer)
+        layer = (
+            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            else lvutils.get_layer_object(self.model, layer)
+        )
         if len(class_indices) == 0:
             class_indices = list(range(layer.output_shape[-1]))
 
@@ -938,16 +957,16 @@ class GuidedBackpropagation():
             inputs=self.model.inputs, outputs=layer.output, name='gbmodel'
         )
         for l in gbmodel.layers:
-            if (
-                (hasattr(l, 'activation') and l.activation == keras.activations.relu)
-                or isinstance(l, layers.ReLU)
-            ):
-                l.activation = self.guided_relu
+            if hasattr(l, 'activation') and l.activation == keras.activations.relu:
+                l.activation = lvutils.guided_relu
+            if isinstance(l, layers.ReLU):
+                l = lvutils.GuidedReLU(name=l.name)
+
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(input_image)
             pred = gbmodel(input_image)
 
-        nrows, ncols = obtain_reasonable_figsize(
+        nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
         fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
@@ -960,10 +979,13 @@ class GuidedBackpropagation():
             fig.add_subplot(nrows, ncols, i+1)
             with tape:
                 loss = (
-                    pred[..., highest_mean_filter(pred)] if ci is None
+                    pred[..., lvutils.highest_mean_filter(pred)] if ci is None
                     else pred[..., ci]
                 )
-            saliency = tf.squeeze(tape.gradient(loss, input_image)).numpy()
+            saliency = tape.gradient(loss, input_image)[0, ...]
+            if saliency.ndim > 2:
+                saliency = tf.reduce_mean(saliency, axis=-1)
+            saliency = saliency.numpy()
             if saliency_mode == 'abs':
                 saliency = np.abs(saliency)
             elif saliency_mode == 'pos':
@@ -973,7 +995,11 @@ class GuidedBackpropagation():
                     (saliency - np.min(saliency))
                     / (np.ptp(saliency) + keras.backend.epsilon())
                 )
-            plt.imshow(saliency, cmap=colormap)
+            if overlay:
+                plt.imshow(input_image[0], cmap=image_colormap)
+                plt.imshow(saliency, cmap=saliency_colormap, alpha=overlay_alpha)
+            else:
+                plt.imshow(saliency, cmap=saliency_colormap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -993,8 +1019,10 @@ class GuidedBackpropagation():
             self, input_image: tf.Tensor | np.ndarray,
             layers_list: list[int | str | layers.Layer] = [],
             class_indices: list[int] = [], max_classes: int = 1024,
-            saliency_mode: str = 'norm', figscale: float = 2, dpi: float = 100,
-            colormap: str = 'binary_r', include_class_titles: bool = True,
+            saliency_mode: str = 'abs', saliency_colormap: str = 'jet',
+            overlay: bool = True, overlay_alpha: float = 0.5,
+            include_class_titles: bool = False, figscale: float = 2,
+            dpi: float = 100, image_colormap: str = 'binary_r',
             textcolor: str = 'white', facecolor: str = 'black',
             save_dir: str = 'guided_backprop', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
@@ -1016,14 +1044,21 @@ class GuidedBackpropagation():
             max_classes: Skips layers containing more than this number of output
                 classes / channels. Useful for avoiding huge figures for large Dense
                 layers. Default is 1024.
-            saliency_mode: One of 'all', 'abs' or 'pos'. Specifies whether to visualise
-                the gradients as-is (all), the absolute values of the gradients (abs),
-                or only all nonnegative values (pos). Default is 'all'.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'abs'.
+            saliency_colormap: The colormap to use for the saliency map.
+                Default is 'jet'.
+            overlay: Whether to overlay the saliency map over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid saliency map, passed to
+                plt.imshow. Default is 0.5. Has no effect for image_mode != 'overlay'.
+            include_class_titles: Whether to title each subplot with the class index.
+                Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution. Default is 100.
-            colormap: Colormap to use for the saliency map. Default is 'binary_r'.
-            include_class_titles: Whether to title each subplot with the class index.
-                Default is True.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background colour, passed to fig.savefig.
                 Default is 'black'.
@@ -1042,14 +1077,13 @@ class GuidedBackpropagation():
             os.mkdir(save_dir)
         except FileExistsError:
             pass
-        
-        if len(layers_list) == 0:
-            layers_list = [
-                l for l in self.model.layers if not isinstance(l, self.invalid_layers)
-            ]
-        else:
-            layers_list = [get_layer_object(self.model, l) for l in layers_list]
-        for l in layers_list:
+
+        layers_list = (
+            [l for l in self.model.layers if not isinstance(l, self.invalid_layers)]
+            if len(layers_list) == 0
+            else [lvutils.get_layer_object(self.model, l) for l in layers_list]
+        )
+        for l in tqdm(layers_list):
             if l.output_shape[-1] > max_classes:
                 print(
                     f'Skipping layer {l.name} '
@@ -1058,9 +1092,211 @@ class GuidedBackpropagation():
                 continue
             self.plot_saliency_maps(
                 input_image=input_image, class_indices=class_indices, layer=l,
-                saliency_mode=saliency_mode, figscale=figscale, dpi=dpi,
-                colormap=colormap, include_class_titles=include_class_titles,
+                saliency_mode=saliency_mode, saliency_colormap=saliency_colormap,
+                overlay=overlay, overlay_alpha=overlay_alpha,
+                figscale=figscale, dpi=dpi, image_colormap=image_colormap,
+                include_class_titles=include_class_titles,
                 textcolor=textcolor, facecolor=facecolor, save_dir=save_dir,
                 save_str=save_str, save_format=save_format,
                 fig_aspect=fig_aspect, fig_orient=fig_orient
             )
+
+
+class GuidedGradCAM():
+    """
+    Class for visualising class activation maps with Guided-GradCAM
+
+    Attributes:
+        model: The keras Model to visualise.
+    """
+
+    def __init__(self, model: keras.Model):
+        """
+        Initialises a Guided-GradCAM object to be used with the given model.
+
+        Args:
+            model: The keras Model to visualise.
+        """
+        self.model = model
+        self.gradcam = GradCAM(self.model)
+        self.guidedbackprop = GuidedBackpropagation(self.model)
+
+
+    def generate_heatmap(
+            self, input_image: tf.Tensor | np.ndarray, class_index: int,
+            layer: int | str | layers.Layer = None,
+            saliency_mode: str = 'norm') -> np.ndarray:
+        """
+        Generates a class activation heatmap using Grad-CAM for the given input image
+        and prediction class index. Can optionally specify a layer (uses the last
+        convolutional layer by default).
+
+        Args:
+            input_image: The desired input image.
+            class_index: Index corresponding to the predicted class to visualise.
+            layer: The layer from which to visualise the gradients. Can be
+                specified either by a layer index (int) or layer name (str).
+                Default is None, which specifies the last Conv2D layer.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'norm'.
+
+        Returns:
+            The class activation heatmap as a numpy array.
+
+        Raises:
+            ValueError if the specified layer has an invalid shape.
+        """
+        layer = (
+            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            else lvutils.get_layer_object(self.model, layer)
+        )
+        if len(layer.output_shape) != 4:
+            raise ValueError(
+                f'Layer {layer.name} has an invalid shape. '
+                f'It is recommended to use the last Conv2D layer.'
+            )
+        cam = self.gradcam.generate_heatmap(
+            input_image=input_image, class_index=class_index, layer=layer
+        )
+        gbsaliency = self.guidedbackprop.get_saliency_map(
+            input_image=input_image, class_index=class_index, layer=layer,
+            saliency_mode=saliency_mode
+        )
+        return cam * gbsaliency
+
+
+    def plot_heatmap(
+            self, input_image: tf.Tensor | np.ndarray, class_index: int,
+            layer: int | str | layers.Layer = None, saliency_mode: str = 'abs',
+            overlay: bool = True, overlay_alpha: float = 0.5,
+            heatmap_colormap: str = 'jet', image_colormap: str = 'binary_r',
+            figsize: float = 6, dpi: float = 100) -> Figure:
+        """
+        Generates and plots a class activation heatmap using Guided-GradCAM for the
+        given input image, prediction index and layer.
+
+        Args:
+            input_image: The desired input image.
+            class_index: Index corresponding to the predicted class to visualise.
+            layer: The layer from which to visualise the gradients. Can be
+                specified either by a layer index (int) or layer name (str).
+                Default is None, which specifies the last Conv2D layer.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'abs'.
+            overlay: Whether to overlay the heatmap over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
+                Default is 0.5. Has no effect for image_mode != 'overlay'.
+            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            figsize: Figure size, passed to plt.figure. Default is 10.
+            dpi: Base resolution, passed to plt.figure. Default is 100.
+        
+        Returns:
+            The figure with the desired heatmap.
+        """
+        heatmap = self.generate_heatmap(
+            input_image=input_image, class_index=class_index,
+            layer=layer, saliency_mode=saliency_mode
+        )
+        fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
+        if overlay:
+            plt.imshow(input_image[0], cmap=image_colormap)
+            plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+        else:
+            plt.imshow(heatmap, cmap=heatmap_colormap)
+        plt.axis('off')
+        return fig
+
+
+    def plot_heatmaps(
+            self, input_image: np.ndarray, class_indices: list[int] = [],
+            layer: int | str | layers.Layer = None, saliency_mode: str = 'norm',
+            overlay: bool = True, overlay_alpha: float = 0.5,
+            heatmap_colormap: str = 'jet', image_colormap: str = 'binary_r',
+            include_class_titles: bool = True, figscale: float = 2, dpi: float = 100,
+            textcolor: str = 'white', facecolor: str = 'black',
+            save_dir: str = 'heatmaps', save_str: str = '', save_format: str = 'png',
+            fig_aspect: str = 'uniform', fig_orient: str = 'h') -> None:
+        """
+        Plots and saves class activation heatmaps using Grad-CAM for the given input
+        image with respect to the specified class indices, or all class indices.
+
+        Args:
+            input_image: The desired input image.
+            class_indices: List of indices to the predicted class to visualise.
+            layer: The layer from which to visualise the gradients. Can be
+                specified either by a layer index (int) or layer name (str).
+                Default is None, which specifies the last Conv2D layer.
+            saliency_mode: One of 'norm', 'abs', 'pos' or ''. Specifies whether
+                to return the normalised saliency ('norm'), the absolute values of the
+                saliency ('abs'), only all nonnegative values ('pos'), or the saliency
+                as-is with no further normalisation (''). Default is 'norm'.
+            overlay: Whether to overlay the heatmap over the original input image.
+                Default is True.
+            overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
+                Default is 0.5. Has no effect for image_mode != 'overlay'.
+            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
+            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            include_class_titles: Whether to title each subplot with the class index.
+                Default is True.
+            figscale: Base figure scale multiplier, passed to plt.figure. Default is 2.
+            dpi: Base resolution, passed to plt.figure. Default is 100.
+            textcolor: Text color to use for the subplot titles. Default is 'white'.
+            facecolor: Figure facecolor. Passed to fig.savefig. Default is 'black'.
+            save_dir: Directory to save the plot to. Default is 'heatmaps'
+            save_str: Optional string to name the output file. The output format is
+                gradcam_{save_str}{model.name}.{save_format}. Default is ''.
+            save_format: Format to save images with, e.g. 'png' (default), 'pdf', 'jpg'.
+            fig_aspect: One of 'uniform' or 'wide', controls the aspect ratio
+                of the figure. Use 'uniform' for squarish plots.
+                and 'wide' for rectangular. Default is 'uniform'.
+            fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
+                will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
+            
+        Returns:
+            An all-in-one figure with each heatmap as a subplot.
+        """
+        try:
+            os.mkdir(save_dir)
+        except FileExistsError:
+            pass
+
+        if len(class_indices) == 0:
+            class_indices = list(range(self.model.output_shape[-1]))
+
+        nrows, ncols = lvutils.obtain_reasonable_figsize(
+            num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
+        )
+        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        if include_class_titles:
+            fig.subplots_adjust(wspace=0.05, hspace=0.2)
+        else:
+            fig.subplots_adjust(wspace=0.05, hspace=0.05)
+
+        for i, ci in enumerate(class_indices):
+            fig.add_subplot(nrows, ncols, i+1)
+            heatmap = self.generate_heatmap(
+                input_image=input_image, class_index=ci,
+                layer=layer, saliency_mode=saliency_mode
+            )
+            if overlay:
+                plt.imshow(input_image[0], cmap=image_colormap)
+                plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+            else:
+                plt.imshow(heatmap, cmap=heatmap_colormap)
+            plt.axis('off')
+            if include_class_titles:
+                plt.title(f'{ci}', c=textcolor)
+        fig.savefig(
+            os.path.join(
+                save_dir, f'guidedgradcam_{save_str}{self.model.name}.{save_format}'
+            ),
+            format=save_format, facecolor=facecolor, bbox_inches='tight'
+        )
+        fig.clear()
+        plt.close(fig)

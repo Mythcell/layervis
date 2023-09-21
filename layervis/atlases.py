@@ -25,7 +25,7 @@ from matplotlib.figure import Figure
 from matplotlib.colors import Colormap
 import umap
 
-from layervis.utils import euclidean_dist_2d, get_layer_object
+import layervis.utils as lvutils
 
 class ImageAtlas():
     """
@@ -53,7 +53,7 @@ class ImageAtlas():
         """
         Uses UMAP to create a lower-dimensional embedding of the outputs of the
         specified model layer when inputted with the given array of images. You can
-        provide a UNET object to perform the dimensionality reduction. Otherwise, this
+        provide a UMAP object to perform the dimensionality reduction. Otherwise, this
         function acts as a partial wrapper for UMAP and will create a new UMAP object
         with a subset of common parameters.
 
@@ -72,7 +72,7 @@ class ImageAtlas():
             spread: See umap.UMAP(). Effective scale of the embedding.
             verbose: See umap.UMAP(). Verbosity of UMAP logging.
         """
-        layer = get_layer_object(model=self.model, layer_spec=layer)
+        layer = lvutils.get_layer_object(model=self.model, layer_spec=layer)
         if mapper is None:
             mapper = umap.UMAP(
                 n_neighbors=n_neighbors, n_components=n_components, metric=metric,
@@ -129,6 +129,7 @@ class ImageAtlas():
             figscale: Figure scale multiplier. The figure size is nx*figscale
                 by ny*figscale. Default is 1.
             dpi: Base resolution, passed to plt.figure. Default is 100.
+            colormap: Colormap to use for the images. Default is 'binary_r'.
 
         Returns:
             The figure displaying the image atlas,
@@ -166,9 +167,9 @@ class ImageAtlas():
                 ax = fig.add_subplot(ny, nx, nn)
                 closest = min(
                     enumerate(embedding),
-                    key=lambda x: euclidean_dist_2d(x[1], (j, i))
+                    key=lambda x: lvutils.euclidean_dist_2d(x[1], (j, i))
                 )
-                distance = euclidean_dist_2d(closest[1], (j, i))
+                distance = lvutils.euclidean_dist_2d(closest[1], (j, i))
                 if distance <= max_image_dist:
                     ax.imshow(images[closest[0], ...], cmap=colormap)
                     if show_labels:
