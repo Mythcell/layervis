@@ -1,22 +1,27 @@
 # layervis
-A simple suite of utilities for visualising convolutional neural networks.
+A suite of utilities for visualising convolutional neural networks.
 ***
 
-`layervis` contains several functions intended to be used to visualise convolutional neural networks (TensorFlow+Keras).
-
+`layervis` implements a variety of visualisation and interpretability techniques for use with convolutional neural networks.
 The code currently supports the following visualisation techniques:
 
 * **Feature maps**
 * **Filter weights** (actual kernel weights)
 * **Filter patterns** (filter responses visualised with gradient ascent, based on [this keras.io example](https://keras.io/examples/vision/visualizing_what_convnets_learn/))
-* **Class activation maps**
+* **Class activation maps** (GradCAM, Guided GradCAM)
 * **Saliency maps**
+* **Guided Backpropagation**
 * **Image atlases**
 
 with plans for several more.
 
-### Examples
+The goal is to enable the rapid production of figures suitable for publication, while also providing enough flexibility for users to create custom plots.
+To that end, `layervis` provides many automatic plotting functions out of the box (e.g. `plot_feature_maps`).
+
+### Examples (outdated)
 An example gallery Jupyter notebook will be included soon. <br> Here are some example snippets for typical usage:
+
+**Edit: Sep 2023** These snippets are for an older version of `layervis`.
 
 #### Feature maps
 
