@@ -48,7 +48,7 @@ class FilterWeights:
     def plot_filter_weights(
             self, layer: int | str | tf.Tensor, input_channel_index: int = 0,
             normalize_weights: bool = True, figscale: float = 1, dpi: float = 100,
-            colormap: str = 'cividis', fig_aspect: str = 'uniform',
+            cmap: str = 'cividis', fig_aspect: str = 'uniform',
             fig_orient: str = 'h', include_title: bool = False) -> Figure:
         """
         Plots the filter weights for a given layer.
@@ -64,7 +64,7 @@ class FilterWeights:
                 visualisation. Default is True.
             figscale: Base figure scale multiplier, passed to plt.figure.
             dpi: Base dpi, passed to plt.figure
-            colormap: Base colormap, passed to plt.figure.
+            cmap: Base colormap, passed to plt.figure.
             fig_aspect: One of 'uniform' or 'wide'. Use 'uniform' for
                 squarish plots and 'wide' for more rectangular plots.
             fig_orient: One of 'h' or 'v'. If set to 'h', the number of columns
@@ -104,14 +104,14 @@ class FilterWeights:
             fig.suptitle(layer.name)
         for i in range(num_filters):
             fig.add_subplot(nrows, ncols, i+1)
-            plt.imshow(filters[..., i], cmap=colormap)
+            plt.imshow(filters[..., i], cmap=cmap)
             plt.axis('off')
         return fig
 
 
     def plot_all_weights(
             self, input_channel_index: int = 0, normalize_weights: bool = True,
-            figscale: float = 1, dpi: float = 100, colormap: str = 'cividis',
+            figscale: float = 1, dpi: float = 100, cmap: str = 'cividis',
             facecolor: str = 'white', include_titles: bool = False,
             save_dir: str = 'filter_weights', save_format: str = 'png',
             save_str: str = '', fig_aspect: str = 'uniform',
@@ -130,7 +130,7 @@ class FilterWeights:
                 Note the dimensions of the figure are automatically determined,
                 figscale is merely a multiplier with which to scale.
             dpi: Base resolution, passed to plt.figure
-            colormap: Base colormap, passed to plt.figure.
+            cmap: Base colormap, passed to plt.figure.
             facecolor: Background color, passed to fig.savefig.
             include_titles: Whether to title each figure with the name
                 of each layer. Defaults to False.
@@ -155,7 +155,7 @@ class FilterWeights:
             fig = self.plot_filter_weights(
                 layer, input_channel_index=input_channel_index,
                 normalize_weights=normalize_weights, figscale=figscale, dpi=dpi,
-                colormap=colormap, fig_aspect=fig_aspect, fig_orient=fig_orient,
+                cmap=cmap, fig_aspect=fig_aspect, fig_orient=fig_orient,
                 include_title=include_titles
             )
             filename = os.path.join(
@@ -409,7 +409,7 @@ class FilterVis:
             initial_image: np.ndarray | tf.Tensor = None,
             num_iterations: int = 30, learning_rate: float = 10,
             activation_crop: int = 1, image_crop: int = 0, figscale: float = 1,
-            dpi: float = 100, colormap: str = 'binary_r', fig_aspect: str = 'uniform',
+            dpi: float = 100, cmap: str = 'binary_r', fig_aspect: str = 'uniform',
             fig_orient: str = 'h', include_title: bool = False,
             include_corner_axis: bool = False) -> Figure:
         """
@@ -429,7 +429,7 @@ class FilterVis:
                 postprocessing. Defaults to 0.
             figscale: Base figure size multiplier, passed to plt.figure.
             dpi: Base resolution, passed to plt.figure
-            colormap: Base colormap, passed to plt.figure.
+            cmap: Base colormap, passed to plt.figure.
                 Note this only applies to monochromatic image inputs.
             fig_aspect: One of 'uniform' or 'wide'. Use 'uniform' for
                 squarish plots and 'wide' for rectangular.
@@ -473,7 +473,7 @@ class FilterVis:
                 num_iterations, learning_rate, activation_crop
             )
             image = self.postprocess_image(image, image_crop)
-            plt.imshow(image, cmap=colormap)
+            plt.imshow(image, cmap=cmap)
             if include_corner_axis:
                 # remove axes from all but the bottom-left subplot
                 if i != (nrows - 1)*ncols:
@@ -486,7 +486,7 @@ class FilterVis:
     def plot_all_patterns(
             self, initial_image: np.ndarray | tf.Tensor = None, num_iterations: int = 30,
             learning_rate: float = 10, activation_crop: int = 1, image_crop: int = 1,
-            figscale: float = 1, dpi: float = 100, colormap: str = 'binary_r',
+            figscale: float = 1, dpi: float = 100, cmap: str = 'binary_r',
             fig_aspect: str = 'uniform', fig_orient: str = 'h', facecolor: str = 'white',
             save_dir: str = 'filter_patterns', save_format: str = 'png',
             save_str: str = '', include_titles: bool = False,
@@ -509,7 +509,7 @@ class FilterVis:
                 postprocessing. Defaults to 0.
             figscale: Base figure size multiplier, passed to plt.figure.
             dpi: Base resolution, passed to plt.figure
-            colormap: Base colormap, passed to plt.figure.
+            cmap: Base colormap, passed to plt.figure.
             fig_aspect: One of 'uniform' or 'wide'. Use 'uniform' for
                 squarish plots and 'wide' for rectangular.
             fig_orient: One of 'h' or 'v'. If set to 'h', the number of columns
@@ -540,7 +540,7 @@ class FilterVis:
                 layer=layer, initial_image=initial_image,
                 num_iterations=num_iterations, learning_rate=learning_rate,
                 activation_crop=activation_crop, image_crop=image_crop,
-                figscale=figscale, dpi=dpi, colormap=colormap, fig_aspect=fig_aspect,
+                figscale=figscale, dpi=dpi, cmap=cmap, fig_aspect=fig_aspect,
                 fig_orient=fig_orient, include_title=include_titles,
                 include_corner_axis=include_corner_axis
             )

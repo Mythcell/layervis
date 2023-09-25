@@ -115,7 +115,7 @@ def get_last_conv2d_layer(model: keras.Model) -> layers.Layer:
 
 
 def save_image(
-        image: tf.Tensor | np.ndarray, figsize: float, dpi: float, colormap: str,
+        image: tf.Tensor | np.ndarray, figsize: float, dpi: float, cmap: str,
         facecolor: str, save_dir: str, filename: str, save_format: str,
         figure_title: str, include_axis: bool) -> None:
     """
@@ -126,7 +126,7 @@ def save_image(
         image: Image to save.
         figsize: Base figure size, passed to plt.figure.
         dpi: Base dpi, passed to plt.figure.
-        colormap: Base colormap, passed to plt.figure.
+        cmap: Base colormap, passed to plt.figure.
             Note this is ignored for colour (RGB) images/
         facecolor: Figure background colour, passed to fig.savefig/
         save_dir: Directory to save the image in/
@@ -144,7 +144,7 @@ def save_image(
     fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
     if figure_title is not (None or ''):
         fig.suptitle(figure_title)
-    plt.imshow(image, cmap=colormap)
+    plt.imshow(image, cmap=cmap)
     if not include_axis:
         plt.axis('off')
     file_name = os.path.join(save_dir, f'{filename}.{save_format}')

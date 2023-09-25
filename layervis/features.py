@@ -61,9 +61,10 @@ class FeatureMaps:
 
     def get_feature_maps(
             self, input_image: tf.Tensor | np.ndarray,
-            layer: int | str | layers.Layer) -> tf.Tensor | None:
+            layer: int | str | layers.Layer) -> np.ndarray | None:
         """
         Extracts feature maps for the given input with respect to the specified layer.
+        Will skip layers with non 4-dimensional outputs.
 
         Args:
             input_image: Single input with which to generate feature maps.
@@ -83,19 +84,19 @@ class FeatureMaps:
         
         keras.backend.clear_session()
         feature_model = keras.Model(inputs=self.model.input, outputs=layer.output)
-        feature_maps = feature_model(input_image).numpy()
-        if len(feature_maps.shape) != 4:
+        feature_maps = feature_model(input_image)
+        if feature_maps.ndim != 4:
             print(
-                f'Skipping layer {layer.name} '
-                f'due to invalid output dimensions'
+                f'W: Skipping layer {layer.name} '
+                f'as {feature_maps.shape} is an invalid output shape'
             )
             return None
-        return feature_maps
+        return feature_maps.numpy()
 
 
     def plot_feature_map(
             self, input_image: tf.Tensor | np.ndarray, layer: str | int | layers.Layer, 
-            figscale: float = 1, dpi: float = 100, colormap: str = 'cividis',
+            figscale: float = 1, dpi: float = 100, cmap: str = 'cividis',
             fig_aspect: str = 'uniform', fig_orient: str = 'h',
             include_title: bool = False,
             include_corner_axis: bool = True) -> Figure | None:
@@ -108,7 +109,7 @@ class FeatureMaps:
             layer: Name OR index of the layer to plot the feature maps of.
             figscale: Figure size multiplier, passed to plt.figure. Default is 1.
             dpi: Base dpi, passed to plt.figure. Default is 100.
-            colormap: Base colormap, passed to plt.figure. Default is 'cividis'
+            cmap: Base colormap, passed to plt.figure. Default is 'cividis'
             fig_aspect: One of 'uniform' or 'wide', controls the aspect ratio
                 of the figure. Use 'uniform' for squarish plots
                 and 'wide' for rectangular. Default is 'uniform'.
@@ -142,7 +143,7 @@ class FeatureMaps:
             fig.suptitle(f'{self.layer_names[i]}')
         for i in range(nmaps):
             fig.add_subplot(nrows, ncols, i+1)
-            plt.imshow(feature_maps[0, ..., i], cmap=colormap)
+            plt.imshow(feature_maps[0, ..., i], cmap=cmap)
             if include_corner_axis:
                 # remove axes from all but the bottom-left subplot
                 if i != (nrows - 1)*ncols:
@@ -156,7 +157,7 @@ class FeatureMaps:
             self, input_image: tf.Tensor | np.ndarray,
             layers_list: list[int | str | layers.Layer] = [],
             plot_input: bool = True, figscale: float = 1, dpi: float = 100,
-            colormap: str = 'cividis', facecolor: str = 'white',
+            cmap: str = 'cividis', facecolor: str = 'white',
             fig_aspect: str = 'uniform', fig_orient: str = 'h',
             save_dir: str = 'feature_maps', save_format: str = 'png', prefix: str = '',
             suffix: str = '', include_titles: bool = False,
@@ -179,7 +180,7 @@ class FeatureMaps:
                 where ncols and nrows are automatically determined based on the number
                 of feature channels to plot.
             dpi: Base resolution, passed to plt.figure. Default is 100.
-            colormap: Base colormap, passed to plt.imshow. Default is 'cividis'.
+            cmap: Base colormap, passed to plt.imshow. Default is 'cividis'.
             facecolor: Figure background color, passed to fig.savefig
             fig_aspect: One of 'uniform' or 'wide', controls the aspect ratio
                 of the figure. Use 'uniform' for squarish plots
@@ -209,7 +210,7 @@ class FeatureMaps:
         if plot_input:
             lvutils.save_image(
                 image=input_image[0, ...], figsize=figscale*6, dpi=dpi,
-                colormap=colormap, facecolor=facecolor, save_dir=save_dir,
+                cmap=cmap, facecolor=facecolor, save_dir=save_dir,
                 filename=f'input{suffix}', save_format=save_format,
                 figure_title=('input' if include_titles else None),
                 include_axis=include_corner_axis
@@ -217,7 +218,7 @@ class FeatureMaps:
         for layer in tqdm(layers_list):
             fig = self.plot_feature_map(
                 input_image=input_image, layer=layer, figscale=figscale, dpi=dpi,
-                colormap=colormap, fig_aspect=fig_aspect, fig_orient=fig_orient,
+                cmap=cmap, fig_aspect=fig_aspect, fig_orient=fig_orient,
                 include_title=include_titles, include_corner_axis=include_corner_axis
             )
             if fig is None:

@@ -111,7 +111,7 @@ class GradCAM():
             self, input_image: tf.Tensor | np.ndarray, class_index: int,
             layer: int | str | layers.Layer = None,
             overlay: bool = True, overlay_alpha: float = 0.5,
-            heatmap_colormap: str = 'jet', image_colormap: str = 'binary_r',
+            heatmap_cmap: str = 'jet', image_cmap: str = 'binary_r',
             figsize: float = 6, dpi: float = 100) -> Figure:
         """
         Generates and plots a class activation heatmap using Grad-CAM for the
@@ -127,8 +127,8 @@ class GradCAM():
                 Default is True.
             overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
                 Default is 0.5. Has no effect for image_mode != 'overlay'.
-            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            heatmap_cmap: The colormap to use for the heatmap. Default is 'jet'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             figsize: Figure size, passed to plt.figure. Default is 10.
             dpi: Base resolution, passed to plt.figure. Default is 100.
         
@@ -140,10 +140,10 @@ class GradCAM():
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
         if overlay:
-            plt.imshow(input_image[0], cmap=image_colormap)
-            plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+            plt.imshow(input_image[0], cmap=image_cmap)
+            plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
         else:
-            plt.imshow(heatmap, cmap=heatmap_colormap)
+            plt.imshow(heatmap, cmap=heatmap_cmap)
         plt.axis('off')
         return fig
     
@@ -151,8 +151,8 @@ class GradCAM():
     def plot_heatmaps(
             self, input_image: np.ndarray, class_indices: list[int] = [],
             layer: int | str | layers.Layer = None, overlay: bool = True,
-            overlay_alpha: float = 0.5, heatmap_colormap: str = 'jet',
-            image_colormap: str = 'binary_r', include_class_titles: bool = True,
+            overlay_alpha: float = 0.5, heatmap_cmap: str = 'jet',
+            image_cmap: str = 'binary_r', include_class_titles: bool = True,
             figscale: float = 2, dpi: float = 100, textcolor: str = 'white',
             facecolor: str = 'black', save_dir: str = 'heatmaps', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
@@ -171,8 +171,8 @@ class GradCAM():
                 Default is True.
             overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
                 Default is 0.5. Has no effect for image_mode != 'overlay'.
-            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            heatmap_cmap: The colormap to use for the heatmap. Default is 'jet'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             include_class_titles: Whether to title each subplot with the class index.
                 Default is True.
             figscale: Base figure scale multiplier, passed to plt.figure. Default is 2.
@@ -215,10 +215,10 @@ class GradCAM():
                 input_image=input_image, class_index=ci, layer=layer, resize=True
             )
             if overlay:
-                plt.imshow(input_image[0], cmap=image_colormap)
-                plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+                plt.imshow(input_image[0], cmap=image_cmap)
+                plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
             else:
-                plt.imshow(heatmap, cmap=heatmap_colormap)
+                plt.imshow(heatmap, cmap=heatmap_cmap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -313,9 +313,9 @@ class GradientSaliency():
     def plot_saliency_maps(
             self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
             layer: int | str | layers.Layer = -1, saliency_mode: str = 'abs',
-            saliency_colormap: str = 'jet', overlay: bool = True,
+            saliency_cmap: str = 'jet', overlay: bool = True,
             overlay_alpha: float = 0.5, include_class_titles: bool = False,
-            figscale: float = 2, dpi: float = 100, image_colormap: str = 'binary_r',
+            figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
             textcolor: str = 'white', facecolor: str = 'black',
             save_dir: str = 'saliency_maps', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
@@ -339,7 +339,7 @@ class GradientSaliency():
                 to return the normalised saliency ('norm'), the absolute values of the
                 saliency ('abs'), only all nonnegative values ('pos'), or the saliency
                 as-is with no further normalisation (''). Default is 'abs'.
-            saliency_colormap: The colormap to use for the saliency map.
+            saliency_cmap: The colormap to use for the saliency map.
                 Default is 'jet'.
             overlay: Whether to overlay the saliency map over the original input image.
                 Default is True.
@@ -349,7 +349,7 @@ class GradientSaliency():
                 Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution, passed to plt.figure.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background color. Default is 'black'.
             save_dir: Directory to save the plots to. Default is 'saliency_maps'.
@@ -413,10 +413,10 @@ class GradientSaliency():
                     / (np.ptp(saliency) + keras.backend.epsilon())
                 )
             if overlay:
-                plt.imshow(input_image[0], cmap=image_colormap)
-                plt.imshow(saliency, cmap=saliency_colormap, alpha=overlay_alpha)
+                plt.imshow(input_image[0], cmap=image_cmap)
+                plt.imshow(saliency, cmap=saliency_cmap, alpha=overlay_alpha)
             else:
-                plt.imshow(saliency, cmap=saliency_colormap)
+                plt.imshow(saliency, cmap=saliency_cmap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -436,10 +436,10 @@ class GradientSaliency():
             self, input_image: tf.Tensor | np.ndarray,
             layers_list: list[int | str | layers.Layer] = [],
             class_indices: list[int] = [], max_classes: int = 1024,
-            saliency_mode: str = 'abs', saliency_colormap: str = 'jet',
+            saliency_mode: str = 'abs', saliency_cmap: str = 'jet',
             overlay: bool = True, overlay_alpha: float = 0.5,
             include_class_titles: bool = False, figscale: float = 2, dpi: float = 100,
-            image_colormap: str = 'binary_r', textcolor: str = 'white',
+            image_cmap: str = 'binary_r', textcolor: str = 'white',
             facecolor: str = 'black', save_dir: str = 'saliency_maps',
             save_str: str = '', save_format: str = 'png', fig_aspect: str = 'uniform',
             fig_orient: str = 'h') -> None:
@@ -464,7 +464,7 @@ class GradientSaliency():
                 to return the normalised saliency ('norm'), the absolute values of the
                 saliency ('abs'), only all nonnegative values ('pos'), or the saliency
                 as-is with no further normalisation (''). Default is 'abs'.
-            saliency_colormap: The colormap to use for the saliency map.
+            saliency_cmap: The colormap to use for the saliency map.
                 Default is 'jet'.
             overlay: Whether to overlay the saliency map over the original input image.
                 Default is True.
@@ -474,7 +474,7 @@ class GradientSaliency():
                 Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution, passed to plt.figure.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background colour, passed to fig.savefig.
                 Default is 'black'.
@@ -507,10 +507,10 @@ class GradientSaliency():
                 continue
             self.plot_saliency_maps(
                 input_image=input_image, class_indices=class_indices, layer=l,
-                saliency_mode=saliency_mode, saliency_colormap=saliency_colormap,
+                saliency_mode=saliency_mode, saliency_cmap=saliency_cmap,
                 overlay=overlay, overlay_alpha=overlay_alpha,
                 include_class_titles=include_class_titles, figscale=figscale,
-                dpi=dpi, image_colormap=image_colormap, textcolor=textcolor,
+                dpi=dpi, image_cmap=image_cmap, textcolor=textcolor,
                 facecolor=facecolor, save_dir=save_dir, save_str=save_str,
                 save_format=save_format, fig_aspect=fig_aspect,
                 fig_orient=fig_orient
@@ -668,7 +668,7 @@ class ClassModel():
             self, class_index: int, score_layer: int | str | layers.Layer = -2,
             num_iterations: int = 30, learning_rate: int = 10, image_decay: float = 0.8,
             enable_blur: bool = True, blur_freq: int = 5, blur_size: int = 3,
-            figsize: float = 6, dpi: float = 100, colormap: str = 'viridis') -> Figure:
+            figsize: float = 6, dpi: float = 100, cmap: str = 'viridis') -> Figure:
         """
         Generates and plots a class model image for the desired class index. Uses
         gradient ascent to generate an image that maximises the activation of a given
@@ -694,7 +694,7 @@ class ClassModel():
             blur_size: Strength of the Gaussian blur. Default is 3.
             figsize: Base figure size. Default is 6.
             dpi: Base figure resolution. Default is 100.
-            colormap: Image colormap; ignored for RGB images. Default is 'viridis'.
+            cmap: Image colormap; ignored for RGB images. Default is 'viridis'.
 
         Returns:
             A matplotlib.pyplot Figure object. 
@@ -706,7 +706,7 @@ class ClassModel():
             blur_freq=blur_freq, blur_size=blur_size
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
-        plt.imshow(image, cmap=colormap)
+        plt.imshow(image, cmap=cmap)
         plt.axis('off')
         return fig
 
@@ -716,7 +716,7 @@ class ClassModel():
             score_layer: int | str | layers.Layer = -2, num_iterations: int = 30,
             learning_rate: int = 10, image_decay: float = 0.8,
             enable_blur: bool = True, blur_freq: int = 5, blur_size: int = 3,
-            figscale: float = 2, dpi: float = 100, colormap: str = 'viridis',
+            figscale: float = 2, dpi: float = 100, cmap: str = 'viridis',
             include_class_titles: bool = True, textcolor: str = 'white',
             facecolor: str = 'black', save_dir: str = 'class_models',
             save_str: str = '', save_format: str = 'png',
@@ -748,7 +748,7 @@ class ClassModel():
             blur_size: Strength of the Gaussian blur. Default is 3.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution. Default is 100.
-            colormap: Image colormap; ignored for RGB images. Default is 'viridis'.
+            cmap: Image colormap; ignored for RGB images. Default is 'viridis'.
             include_class_titles: Whether to title each subplot with the class index.
                 Default is True.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
@@ -789,7 +789,7 @@ class ClassModel():
                 image_decay=image_decay, enable_blur=enable_blur,
                 blur_freq=blur_freq, blur_size=blur_size
             )
-            plt.imshow(image, cmap=colormap)
+            plt.imshow(image, cmap=cmap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -888,9 +888,9 @@ class GuidedBackpropagation():
     def plot_saliency_maps(
             self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
             layer: int | str | tf.Tensor = None, saliency_mode: str = 'abs',
-            saliency_colormap: str = 'jet', overlay: bool = True,
+            saliency_cmap: str = 'jet', overlay: bool = True,
             overlay_alpha: float = 0.5, include_class_titles: bool = False,
-            figscale: float = 2, dpi: float = 100, image_colormap: str = 'binary_r',
+            figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
             textcolor: str = 'white', facecolor: str = 'black',
             save_dir: str = 'guided_backprop', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
@@ -913,7 +913,7 @@ class GuidedBackpropagation():
                 to return the normalised saliency ('norm'), the absolute values of the
                 saliency ('abs'), only all nonnegative values ('pos'), or the saliency
                 as-is with no further normalisation (''). Default is 'abs'.
-            saliency_colormap: The colormap to use for the saliency map.
+            saliency_cmap: The colormap to use for the saliency map.
                 Default is 'jet'.
             overlay: Whether to overlay the saliency map over the original input image.
                 Default is True.
@@ -923,7 +923,7 @@ class GuidedBackpropagation():
                 Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution. Default is 100.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background colour, passed to fig.savefig.
                 Default is 'black'.
@@ -996,10 +996,10 @@ class GuidedBackpropagation():
                     / (np.ptp(saliency) + keras.backend.epsilon())
                 )
             if overlay:
-                plt.imshow(input_image[0], cmap=image_colormap)
-                plt.imshow(saliency, cmap=saliency_colormap, alpha=overlay_alpha)
+                plt.imshow(input_image[0], cmap=image_cmap)
+                plt.imshow(saliency, cmap=saliency_cmap, alpha=overlay_alpha)
             else:
-                plt.imshow(saliency, cmap=saliency_colormap)
+                plt.imshow(saliency, cmap=saliency_cmap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
@@ -1019,10 +1019,10 @@ class GuidedBackpropagation():
             self, input_image: tf.Tensor | np.ndarray,
             layers_list: list[int | str | layers.Layer] = [],
             class_indices: list[int] = [], max_classes: int = 1024,
-            saliency_mode: str = 'abs', saliency_colormap: str = 'jet',
+            saliency_mode: str = 'abs', saliency_cmap: str = 'jet',
             overlay: bool = True, overlay_alpha: float = 0.5,
             include_class_titles: bool = False, figscale: float = 2,
-            dpi: float = 100, image_colormap: str = 'binary_r',
+            dpi: float = 100, image_cmap: str = 'binary_r',
             textcolor: str = 'white', facecolor: str = 'black',
             save_dir: str = 'guided_backprop', save_str: str = '',
             save_format: str = 'png', fig_aspect: str = 'uniform',
@@ -1048,7 +1048,7 @@ class GuidedBackpropagation():
                 to return the normalised saliency ('norm'), the absolute values of the
                 saliency ('abs'), only all nonnegative values ('pos'), or the saliency
                 as-is with no further normalisation (''). Default is 'abs'.
-            saliency_colormap: The colormap to use for the saliency map.
+            saliency_cmap: The colormap to use for the saliency map.
                 Default is 'jet'.
             overlay: Whether to overlay the saliency map over the original input image.
                 Default is True.
@@ -1058,7 +1058,7 @@ class GuidedBackpropagation():
                 Default is False.
             figscale: Base figure size multiplier; passed to plt.figure. Default is 2.
             dpi: Base figure resolution. Default is 100.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             textcolor: Text color to use for the subplot titles. Default is 'white'.
             facecolor: Figure background colour, passed to fig.savefig.
                 Default is 'black'.
@@ -1092,9 +1092,9 @@ class GuidedBackpropagation():
                 continue
             self.plot_saliency_maps(
                 input_image=input_image, class_indices=class_indices, layer=l,
-                saliency_mode=saliency_mode, saliency_colormap=saliency_colormap,
+                saliency_mode=saliency_mode, saliency_cmap=saliency_cmap,
                 overlay=overlay, overlay_alpha=overlay_alpha,
-                figscale=figscale, dpi=dpi, image_colormap=image_colormap,
+                figscale=figscale, dpi=dpi, image_cmap=image_cmap,
                 include_class_titles=include_class_titles,
                 textcolor=textcolor, facecolor=facecolor, save_dir=save_dir,
                 save_str=save_str, save_format=save_format,
@@ -1158,11 +1158,12 @@ class GuidedGradCAM():
                 f'It is recommended to use the last Conv2D layer.'
             )
         cam = self.gradcam.generate_heatmap(
-            input_image=input_image, class_index=class_index, layer=layer
+            input_image=input_image, class_index=class_index,
+            layer=layer, resize=True
         )
         gbsaliency = self.guidedbackprop.get_saliency_map(
-            input_image=input_image, class_index=class_index, layer=layer,
-            saliency_mode=saliency_mode
+            input_image=input_image, class_index=class_index,
+            layer=layer, saliency_mode=saliency_mode
         )
         return cam * gbsaliency
 
@@ -1171,7 +1172,7 @@ class GuidedGradCAM():
             self, input_image: tf.Tensor | np.ndarray, class_index: int,
             layer: int | str | layers.Layer = None, saliency_mode: str = 'abs',
             overlay: bool = True, overlay_alpha: float = 0.5,
-            heatmap_colormap: str = 'jet', image_colormap: str = 'binary_r',
+            heatmap_cmap: str = 'jet', image_cmap: str = 'binary_r',
             figsize: float = 6, dpi: float = 100) -> Figure:
         """
         Generates and plots a class activation heatmap using Guided-GradCAM for the
@@ -1191,8 +1192,8 @@ class GuidedGradCAM():
                 Default is True.
             overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
                 Default is 0.5. Has no effect for image_mode != 'overlay'.
-            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            heatmap_cmap: The colormap to use for the heatmap. Default is 'jet'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             figsize: Figure size, passed to plt.figure. Default is 10.
             dpi: Base resolution, passed to plt.figure. Default is 100.
         
@@ -1205,10 +1206,10 @@ class GuidedGradCAM():
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
         if overlay:
-            plt.imshow(input_image[0], cmap=image_colormap)
-            plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+            plt.imshow(input_image[0], cmap=image_cmap)
+            plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
         else:
-            plt.imshow(heatmap, cmap=heatmap_colormap)
+            plt.imshow(heatmap, cmap=heatmap_cmap)
         plt.axis('off')
         return fig
 
@@ -1217,7 +1218,7 @@ class GuidedGradCAM():
             self, input_image: np.ndarray, class_indices: list[int] = [],
             layer: int | str | layers.Layer = None, saliency_mode: str = 'norm',
             overlay: bool = True, overlay_alpha: float = 0.5,
-            heatmap_colormap: str = 'jet', image_colormap: str = 'binary_r',
+            heatmap_cmap: str = 'jet', image_cmap: str = 'binary_r',
             include_class_titles: bool = True, figscale: float = 2, dpi: float = 100,
             textcolor: str = 'white', facecolor: str = 'black',
             save_dir: str = 'heatmaps', save_str: str = '', save_format: str = 'png',
@@ -1240,8 +1241,8 @@ class GuidedGradCAM():
                 Default is True.
             overlay_alpha: Alpha for the overlaid heatmap, passed to plt.imshow.
                 Default is 0.5. Has no effect for image_mode != 'overlay'.
-            heatmap_colormap: The colormap to use for the heatmap. Default is 'jet'.
-            image_colormap: The colormap to use for the image. Default is 'binary_r'.
+            heatmap_cmap: The colormap to use for the heatmap. Default is 'jet'.
+            image_cmap: The colormap to use for the image. Default is 'binary_r'.
             include_class_titles: Whether to title each subplot with the class index.
                 Default is True.
             figscale: Base figure scale multiplier, passed to plt.figure. Default is 2.
@@ -1285,10 +1286,10 @@ class GuidedGradCAM():
                 layer=layer, saliency_mode=saliency_mode
             )
             if overlay:
-                plt.imshow(input_image[0], cmap=image_colormap)
-                plt.imshow(heatmap, cmap=heatmap_colormap, alpha=overlay_alpha)
+                plt.imshow(input_image[0], cmap=image_cmap)
+                plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
             else:
-                plt.imshow(heatmap, cmap=heatmap_colormap)
+                plt.imshow(heatmap, cmap=heatmap_cmap)
             plt.axis('off')
             if include_class_titles:
                 plt.title(f'{ci}', c=textcolor)
