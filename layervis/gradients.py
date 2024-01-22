@@ -19,19 +19,20 @@ guided backpropagation), class models and class activation maps (GradCAM).
 """
 
 import tensorflow as tf
-from tensorflow import keras
-from keras import layers
-from keras.preprocessing.image import array_to_img, img_to_array
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+
+from tensorflow import keras
+from keras import layers
 from matplotlib.figure import Figure
 from skimage.filters import gaussian
 from tqdm import tqdm
-import os
 
 import layervis.utils as lvutils
 
-class GradCAM():
+
+class GradCAM:
     """
     Class for visualising class activation maps with GradCAM
 
@@ -48,11 +49,13 @@ class GradCAM():
         """
         self.model = model
 
-
     def generate_heatmap(
-            self, input_image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str | layers.Layer = None,
-            resize: bool = True) -> np.ndarray:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_index: int,
+        layer: int | str | layers.Layer = None,
+        resize: bool = True,
+    ) -> np.ndarray:
         """
         Generates a class activation heatmap using Grad-CAM for the given input image
         and prediction class index. Can optionally specify a layer (uses the last
@@ -74,18 +77,18 @@ class GradCAM():
             ValueError if the specified layer has an invalid shape.
         """
         layer = (
-            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            lvutils.get_last_conv2d_layer(self.model)
+            if layer is None
             else lvutils.get_layer_object(self.model, layer)
         )
         if len(layer.output_shape) != 4:
             raise ValueError(
-                f'Layer {layer.name} has an invalid shape. '
-                f'It is recommended to use the last Conv2D layer.'
+                f"Layer {layer.name} has an invalid shape. "
+                f"It is recommended to use the last Conv2D layer."
             )
 
         gradmodel = keras.Model(
-            inputs=self.model.input,
-            outputs=[layer.output, self.model.output]
+            inputs=self.model.input, outputs=[layer.output, self.model.output]
         )
         with tf.GradientTape() as tape:
             layer_output, preds = gradmodel(input_image)
@@ -93,26 +96,30 @@ class GradCAM():
         grads = tape.gradient(pred_class_output, layer_output)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
         heatmap = tf.squeeze(layer_output[0] @ pooled_grads[..., tf.newaxis]).numpy()
-        heatmap = (
-            (heatmap - np.min(heatmap))
-            / (np.ptp(heatmap) + keras.backend.epsilon())
+        heatmap = (heatmap - np.min(heatmap)) / (
+            np.ptp(heatmap) + keras.backend.epsilon()
         )
         if resize:
             target_size = input_image.shape[1]
-            heatmap = tf.convert_to_tensor(heatmap)[..., tf.newaxis] # add channel dim
+            heatmap = tf.convert_to_tensor(heatmap)[..., tf.newaxis]  # add channel dim
             heatmap = tf.image.resize(
-                images=heatmap, size=[target_size, target_size], method='bicubic'
+                images=heatmap, size=[target_size, target_size], method="bicubic"
             )
             heatmap = tf.squeeze(heatmap).numpy()
         return heatmap
 
-
     def plot_heatmap(
-            self, input_image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str | layers.Layer = None,
-            overlay: bool = True, overlay_alpha: float = 0.5,
-            heatmap_cmap: str = 'jet', image_cmap: str = 'binary_r',
-            figsize: float = 6, dpi: float = 100) -> Figure:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_index: int,
+        layer: int | str | layers.Layer = None,
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        heatmap_cmap: str = "jet",
+        image_cmap: str = "binary_r",
+        figsize: float = 6,
+        dpi: float = 100,
+    ) -> Figure:
         """
         Generates and plots a class activation heatmap using Grad-CAM for the
         given input image, prediction index and layer.
@@ -131,7 +138,7 @@ class GradCAM():
             image_cmap: The colormap to use for the image. Default is 'binary_r'.
             figsize: Figure size, passed to plt.figure. Default is 10.
             dpi: Base resolution, passed to plt.figure. Default is 100.
-        
+
         Returns:
             The figure with the desired heatmap.
         """
@@ -144,19 +151,29 @@ class GradCAM():
             plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
         else:
             plt.imshow(heatmap, cmap=heatmap_cmap)
-        plt.axis('off')
+        plt.axis("off")
         return fig
-    
 
     def plot_heatmaps(
-            self, input_image: np.ndarray, class_indices: list[int] = [],
-            layer: int | str | layers.Layer = None, overlay: bool = True,
-            overlay_alpha: float = 0.5, heatmap_cmap: str = 'jet',
-            image_cmap: str = 'binary_r', include_class_titles: bool = True,
-            figscale: float = 2, dpi: float = 100, textcolor: str = 'white',
-            facecolor: str = 'black', save_dir: str = 'heatmaps', save_str: str = '',
-            save_format: str = 'png', fig_aspect: str = 'uniform',
-            fig_orient: str = 'h') -> None:
+        self,
+        input_image: np.ndarray,
+        class_indices: list[int] = [],
+        layer: int | str | layers.Layer = None,
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        heatmap_cmap: str = "jet",
+        image_cmap: str = "binary_r",
+        include_class_titles: bool = True,
+        figscale: float = 2,
+        dpi: float = 100,
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "heatmaps",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Plots and saves class activation heatmaps using Grad-CAM for the given input
         image with respect to the specified class indices, or all class indices.
@@ -188,14 +205,11 @@ class GradCAM():
                 and 'wide' for rectangular. Default is 'uniform'.
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
-            
+
         Returns:
             An all-in-one figure with each heatmap as a subplot.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
         if len(class_indices) == 0:
             class_indices = list(range(self.model.output_shape[-1]))
@@ -203,14 +217,14 @@ class GradCAM():
         nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
-        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        fig = plt.figure(figsize=(figscale * ncols, figscale * nrows), dpi=dpi)
         if include_class_titles:
             fig.subplots_adjust(wspace=0.05, hspace=0.2)
         else:
             fig.subplots_adjust(wspace=0.05, hspace=0.05)
 
         for i, ci in enumerate(class_indices):
-            fig.add_subplot(nrows, ncols, i+1)
+            fig.add_subplot(nrows, ncols, i + 1)
             heatmap = self.generate_heatmap(
                 input_image=input_image, class_index=ci, layer=layer, resize=True
             )
@@ -219,20 +233,22 @@ class GradCAM():
                 plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
             else:
                 plt.imshow(heatmap, cmap=heatmap_cmap)
-            plt.axis('off')
+            plt.axis("off")
             if include_class_titles:
-                plt.title(f'{ci}', c=textcolor)
+                plt.title(f"{ci}", c=textcolor)
         fig.savefig(
             os.path.join(
-                save_dir, f'gradcam_{save_str}{self.model.name}.{save_format}'
+                save_dir, f"gradcam_{save_str}{self.model.name}.{save_format}"
             ),
-            format=save_format, facecolor=facecolor, bbox_inches='tight'
+            format=save_format,
+            facecolor=facecolor,
+            bbox_inches="tight",
         )
         fig.clear()
         plt.close(fig)
 
 
-class GradientSaliency():
+class GradientSaliency:
     """
     Class for visualising saliency maps via vanilla gradient backpropagation.
 
@@ -241,7 +257,7 @@ class GradientSaliency():
         invalid_layers: Tuple of layers.Layer objects to ignore when plotting saliency
             maps with plot_layer_saliency_maps.
     """
-    
+
     def __init__(self, model: keras.Model):
         """
         Initialises a GradientSalency object with the given model.
@@ -252,11 +268,14 @@ class GradientSaliency():
         self.model = model
         self.invalid_layers: tuple[layers.Layer, ...] = (layers.InputLayer,)
 
-
     def get_saliency_map(
-            self, input_image: tf.Tensor | np.ndarray, class_index: int = None,
-            layer: int | str | layers.Layer = -1, saliency_mode: str = 'abs',
-            force_rgb: bool = False) -> np.ndarray:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_index: int = None,
+        layer: int | str | layers.Layer = -1,
+        saliency_mode: str = "abs",
+        force_rgb: bool = False,
+    ) -> np.ndarray:
         """
         Returns a gradient-based saliency map for the given input image. You can
         optionally specify a class index to visualise and/or layer to backpropagate from.
@@ -283,10 +302,10 @@ class GradientSaliency():
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
         layer = lvutils.get_layer_object(self.model, layer)
-        
+
         keras.backend.clear_session()
         smodel = keras.Model(
-            inputs=self.model.inputs, outputs=layer.output, name='saliency_model'
+            inputs=self.model.inputs, outputs=layer.output, name="saliency_model"
         )
         with tf.GradientTape() as tape:
             tape.watch(input_image)
@@ -298,28 +317,37 @@ class GradientSaliency():
         if saliency.ndim > 2 and not force_rgb:
             saliency = tf.reduce_mean(saliency, axis=-1)
         saliency = saliency.numpy()
-        if saliency_mode == 'abs':
+        if saliency_mode == "abs":
             saliency = np.abs(saliency)
-        elif saliency_mode == 'pos':
+        elif saliency_mode == "pos":
             saliency = np.maximum(saliency, 0)
-        elif saliency_mode == 'norm':
-            saliency = (
-                (saliency - np.min(saliency))
-                / (np.ptp(saliency) + keras.backend.epsilon())
+        elif saliency_mode == "norm":
+            saliency = (saliency - np.min(saliency)) / (
+                np.ptp(saliency) + keras.backend.epsilon()
             )
         return saliency
 
-
     def plot_saliency_maps(
-            self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
-            layer: int | str | layers.Layer = -1, saliency_mode: str = 'abs',
-            saliency_cmap: str = 'jet', overlay: bool = True,
-            overlay_alpha: float = 0.5, include_class_titles: bool = False,
-            figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
-            textcolor: str = 'white', facecolor: str = 'black',
-            save_dir: str = 'saliency_maps', save_str: str = '',
-            save_format: str = 'png', fig_aspect: str = 'uniform',
-            fig_orient: str = 'h') -> None:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_indices: list[int] = [],
+        layer: int | str | layers.Layer = -1,
+        saliency_mode: str = "abs",
+        saliency_cmap: str = "jet",
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        include_class_titles: bool = False,
+        figscale: float = 2,
+        dpi: float = 100,
+        image_cmap: str = "binary_r",
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "saliency_maps",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Plot gradient-based saliency maps for the given input images. You can optionally
         specify class indices to visualise and/or a layer to backpropagate from.
@@ -363,10 +391,7 @@ class GradientSaliency():
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
@@ -376,7 +401,7 @@ class GradientSaliency():
 
         keras.backend.clear_session()
         smodel = keras.Model(
-            inputs=self.model.inputs, outputs=layer.output, name='saliency_model'
+            inputs=self.model.inputs, outputs=layer.output, name="saliency_model"
         )
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(input_image)
@@ -385,64 +410,74 @@ class GradientSaliency():
         nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
-        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        fig = plt.figure(figsize=(figscale * ncols, figscale * nrows), dpi=dpi)
         if include_class_titles:
             fig.subplots_adjust(wspace=0.05, hspace=0.2)
         else:
             fig.subplots_adjust(wspace=0.05, hspace=0.05)
 
         for i, ci in enumerate(class_indices):
-            fig.add_subplot(nrows, ncols, i+1)
+            fig.add_subplot(nrows, ncols, i + 1)
             # use existing tape instead of repeating forward passes
             with tape:
                 loss = (
-                    pred[..., lvutils.highest_mean_filter(pred)] if ci is None
+                    pred[..., lvutils.highest_mean_filter(pred)]
+                    if ci is None
                     else pred[..., ci]
                 )
             saliency = tape.gradient(loss, input_image)[0, ...]
             if saliency.ndim > 2:
                 saliency = tf.reduce_mean(saliency, axis=-1)
             saliency = saliency.numpy()
-            if saliency_mode == 'abs':
+            if saliency_mode == "abs":
                 saliency = np.abs(saliency)
-            elif saliency_mode == 'pos':
+            elif saliency_mode == "pos":
                 saliency = np.maximum(saliency, 0)
-            elif saliency_mode == 'norm':
-                saliency = (
-                    (saliency - np.min(saliency))
-                    / (np.ptp(saliency) + keras.backend.epsilon())
+            elif saliency_mode == "norm":
+                saliency = (saliency - np.min(saliency)) / (
+                    np.ptp(saliency) + keras.backend.epsilon()
                 )
             if overlay:
                 plt.imshow(input_image[0], cmap=image_cmap)
                 plt.imshow(saliency, cmap=saliency_cmap, alpha=overlay_alpha)
             else:
                 plt.imshow(saliency, cmap=saliency_cmap)
-            plt.axis('off')
+            plt.axis("off")
             if include_class_titles:
-                plt.title(f'{ci}', c=textcolor)
+                plt.title(f"{ci}", c=textcolor)
 
         del tape  # important!
         fig.savefig(
-            os.path.join(
-                save_dir, f'{save_str}{layer.name}.{save_format}'
-            ),
-            format=save_format, facecolor=facecolor, bbox_inches='tight'
+            os.path.join(save_dir, f"{save_str}{layer.name}.{save_format}"),
+            format=save_format,
+            facecolor=facecolor,
+            bbox_inches="tight",
         )
         fig.clear()
         plt.close(fig)
-    
 
     def plot_saliency_maps_layers(
-            self, input_image: tf.Tensor | np.ndarray,
-            layers_list: list[int | str | layers.Layer] = [],
-            class_indices: list[int] = [], max_classes: int = 1024,
-            saliency_mode: str = 'abs', saliency_cmap: str = 'jet',
-            overlay: bool = True, overlay_alpha: float = 0.5,
-            include_class_titles: bool = False, figscale: float = 2, dpi: float = 100,
-            image_cmap: str = 'binary_r', textcolor: str = 'white',
-            facecolor: str = 'black', save_dir: str = 'saliency_maps',
-            save_str: str = '', save_format: str = 'png', fig_aspect: str = 'uniform',
-            fig_orient: str = 'h') -> None:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        layers_list: list[int | str | layers.Layer] = [],
+        class_indices: list[int] = [],
+        max_classes: int = 1024,
+        saliency_mode: str = "abs",
+        saliency_cmap: str = "jet",
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        include_class_titles: bool = False,
+        figscale: float = 2,
+        dpi: float = 100,
+        image_cmap: str = "binary_r",
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "saliency_maps",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Plots and saves gradient-based saliency maps for the given input image
         in each layer in the specified list of layers.
@@ -488,36 +523,41 @@ class GradientSaliency():
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
-        layers_list = (
-            [l for l in self.model.layers if not isinstance(l, self.invalid_layers)]
-            if len(layers_list) == 0
-            else [lvutils.get_layer_object(self.model, l) for l in layers_list]
+        layers_list = lvutils.process_layers_list(
+            layers_list, self.model, exclude=self.invalid_layers
         )
-        for l in tqdm(layers_list):
-            if l.output_shape[-1] > max_classes:
+        for layer in tqdm(layers_list):
+            if layer.output_shape[-1] > max_classes:
                 print(
-                    f'Skipping layer {l.name} '
-                    f'as it has more than {max_classes} output channels'
+                    f"Skipping layer {layer.name} "
+                    f"as it has more than {max_classes} output channels"
                 )
                 continue
             self.plot_saliency_maps(
-                input_image=input_image, class_indices=class_indices, layer=l,
-                saliency_mode=saliency_mode, saliency_cmap=saliency_cmap,
-                overlay=overlay, overlay_alpha=overlay_alpha,
-                include_class_titles=include_class_titles, figscale=figscale,
-                dpi=dpi, image_cmap=image_cmap, textcolor=textcolor,
-                facecolor=facecolor, save_dir=save_dir, save_str=save_str,
-                save_format=save_format, fig_aspect=fig_aspect,
-                fig_orient=fig_orient
+                input_image=input_image,
+                class_indices=class_indices,
+                layer=layer,
+                saliency_mode=saliency_mode,
+                saliency_cmap=saliency_cmap,
+                overlay=overlay,
+                overlay_alpha=overlay_alpha,
+                include_class_titles=include_class_titles,
+                figscale=figscale,
+                dpi=dpi,
+                image_cmap=image_cmap,
+                textcolor=textcolor,
+                facecolor=facecolor,
+                save_dir=save_dir,
+                save_str=save_str,
+                save_format=save_format,
+                fig_aspect=fig_aspect,
+                fig_orient=fig_orient,
             )
 
 
-class ClassModel():
+class ClassModel:
     """
     Class for generating class model images.
 
@@ -536,8 +576,11 @@ class ClassModel():
     """
 
     def __init__(
-            self, model: keras.Model, scale_factor: float = 0.2,
-            brightness_factor: float = 0.4):
+        self,
+        model: keras.Model,
+        scale_factor: float = 0.2,
+        brightness_factor: float = 0.4,
+    ):
         """
         Instantiates a ClassModel object to visualise the given model.
         The scale and brightness factors control the starting image
@@ -558,11 +601,17 @@ class ClassModel():
         self.score_model: keras.Model = None
         self.score_layer: layers.Layer = None
 
-
     def gradient_ascent_step(
-            self, image: tf.Tensor, class_index: int, current_step: int,
-            learning_rate: float, image_decay: float, enable_blur: bool,
-            blur_freq: int, blur_size: int) -> tf.Tensor:
+        self,
+        image: tf.Tensor,
+        class_index: int,
+        current_step: int,
+        learning_rate: float,
+        image_decay: float,
+        enable_blur: bool,
+        blur_freq: int,
+        blur_size: int,
+    ) -> tf.Tensor:
         """
         Performs a single gradient ascent step.
 
@@ -582,7 +631,7 @@ class ClassModel():
         Returns:
             A tf.Tensor of gradients to be added to the image tensor.
         """
-        
+
         with tf.GradientTape() as tape:
             tape.watch(image)
             loss = self.score_model(image)[:, class_index]
@@ -592,26 +641,27 @@ class ClassModel():
         if current_step % blur_freq == 0 and enable_blur:
             if image.shape[-1] == 3:
                 image = tf.convert_to_tensor(
-                    gaussian(
-                        image.numpy()[0, ...],
-                        sigma=blur_size
-                    )[np.newaxis, ...]
+                    gaussian(image.numpy()[0, ...], sigma=blur_size)[np.newaxis, ...]
                 )
             else:
                 image = tf.convert_to_tensor(
-                    gaussian(
-                        image.numpy()[0, ..., 0],
-                        sigma=blur_size
-                    )[np.newaxis, ..., np.newaxis]
+                    gaussian(image.numpy()[0, ..., 0], sigma=blur_size)[
+                        np.newaxis, ..., np.newaxis
+                    ]
                 )
         return learning_rate * grads
-    
 
     def generate_class_model(
-            self, class_index: int, score_layer: int | str | layers.Layer = -2,
-            num_iterations: int = 30, learning_rate: int = 10, image_decay: float = 0.8,
-            enable_blur: bool = True, blur_freq: int = 5,
-            blur_size: int = 3) -> np.ndarray:
+        self,
+        class_index: int,
+        score_layer: int | str | layers.Layer = -2,
+        num_iterations: int = 30,
+        learning_rate: int = 10,
+        image_decay: float = 0.8,
+        enable_blur: bool = True,
+        blur_freq: int = 5,
+        blur_size: int = 3,
+    ) -> np.ndarray:
         """
         Generates a class model for the specified class index and score layer.
         It is recommended to use the Dense layer prior to Softmax activation.
@@ -643,32 +693,44 @@ class ClassModel():
         if self.score_model is None or layer != self.score_layer:
             keras.backend.clear_session()
             self.score_model = keras.Model(
-                inputs=self.model.input, outputs=layer.output, name='score_model'
+                inputs=self.model.input, outputs=layer.output, name="score_model"
             )
             self.score_layer = layer
 
         image = lvutils.get_blank_image(
-            shape=(1, *self.model.input_shape[1:]), scale_factor=self.scale_factor,
-            brightness_factor=self.brightness_factor
+            shape=(1, *self.model.input_shape[1:]),
+            scale_factor=self.scale_factor,
+            brightness_factor=self.brightness_factor,
         )
         for i in range(num_iterations):
             image += self.gradient_ascent_step(
-                image, class_index, i, learning_rate, image_decay,
-                enable_blur, blur_freq, blur_size
+                image,
+                class_index,
+                i,
+                learning_rate,
+                image_decay,
+                enable_blur,
+                blur_freq,
+                blur_size,
             )
         image = tf.squeeze(image).numpy()
-        image = (
-            (image - np.min(image))
-            / (np.ptp(image) + keras.backend.epsilon())
-        )
-        return np.uint8(image*255)
-    
+        image = (image - np.min(image)) / (np.ptp(image) + keras.backend.epsilon())
+        return np.uint8(image * 255)
 
     def plot_class_model(
-            self, class_index: int, score_layer: int | str | layers.Layer = -2,
-            num_iterations: int = 30, learning_rate: int = 10, image_decay: float = 0.8,
-            enable_blur: bool = True, blur_freq: int = 5, blur_size: int = 3,
-            figsize: float = 6, dpi: float = 100, cmap: str = 'viridis') -> Figure:
+        self,
+        class_index: int,
+        score_layer: int | str | layers.Layer = -2,
+        num_iterations: int = 30,
+        learning_rate: int = 10,
+        image_decay: float = 0.8,
+        enable_blur: bool = True,
+        blur_freq: int = 5,
+        blur_size: int = 3,
+        figsize: float = 6,
+        dpi: float = 100,
+        cmap: str = "viridis",
+    ) -> Figure:
         """
         Generates and plots a class model image for the desired class index. Uses
         gradient ascent to generate an image that maximises the activation of a given
@@ -697,30 +759,45 @@ class ClassModel():
             cmap: Image colormap; ignored for RGB images. Default is 'viridis'.
 
         Returns:
-            A matplotlib.pyplot Figure object. 
+            A matplotlib.pyplot Figure object.
         """
         image = self.generate_class_model(
-            class_index=class_index, score_layer=score_layer,
-            num_iterations=num_iterations, learning_rate=learning_rate,
-            image_decay=image_decay, enable_blur=enable_blur,
-            blur_freq=blur_freq, blur_size=blur_size
+            class_index=class_index,
+            score_layer=score_layer,
+            num_iterations=num_iterations,
+            learning_rate=learning_rate,
+            image_decay=image_decay,
+            enable_blur=enable_blur,
+            blur_freq=blur_freq,
+            blur_size=blur_size,
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
         plt.imshow(image, cmap=cmap)
-        plt.axis('off')
+        plt.axis("off")
         return fig
 
-
     def plot_class_models(
-            self, class_indices: list[int] = [],
-            score_layer: int | str | layers.Layer = -2, num_iterations: int = 30,
-            learning_rate: int = 10, image_decay: float = 0.8,
-            enable_blur: bool = True, blur_freq: int = 5, blur_size: int = 3,
-            figscale: float = 2, dpi: float = 100, cmap: str = 'viridis',
-            include_class_titles: bool = True, textcolor: str = 'white',
-            facecolor: str = 'black', save_dir: str = 'class_models',
-            save_str: str = '', save_format: str = 'png',
-            fig_aspect: str = 'uniform', fig_orient: str = 'h') -> None:
+        self,
+        class_indices: list[int] = [],
+        score_layer: int | str | layers.Layer = -2,
+        num_iterations: int = 30,
+        learning_rate: int = 10,
+        image_decay: float = 0.8,
+        enable_blur: bool = True,
+        blur_freq: int = 5,
+        blur_size: int = 3,
+        figscale: float = 2,
+        dpi: float = 100,
+        cmap: str = "viridis",
+        include_class_titles: bool = True,
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "class_models",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Generates, plots and saves class model images for the desired class indices.
         Uses gradient ascent to generate an image that maximises the activation
@@ -765,43 +842,46 @@ class ClassModel():
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
         if len(class_indices) == 0:
             class_indices = list(range(self.model.output_shape[-1]))
         nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
-        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        fig = plt.figure(figsize=(figscale * ncols, figscale * nrows), dpi=dpi)
         if include_class_titles:
             fig.subplots_adjust(wspace=0.05, hspace=0.2)
         else:
             fig.subplots_adjust(wspace=0.05, hspace=0.05)
 
         for i, ci in enumerate(class_indices):
-            fig.add_subplot(nrows, ncols, i+1)
+            fig.add_subplot(nrows, ncols, i + 1)
             image = self.generate_class_model(
-                class_index=ci, score_layer=score_layer,
-                num_iterations=num_iterations, learning_rate=learning_rate,
-                image_decay=image_decay, enable_blur=enable_blur,
-                blur_freq=blur_freq, blur_size=blur_size
+                class_index=ci,
+                score_layer=score_layer,
+                num_iterations=num_iterations,
+                learning_rate=learning_rate,
+                image_decay=image_decay,
+                enable_blur=enable_blur,
+                blur_freq=blur_freq,
+                blur_size=blur_size,
             )
             plt.imshow(image, cmap=cmap)
-            plt.axis('off')
+            plt.axis("off")
             if include_class_titles:
-                plt.title(f'{ci}', c=textcolor)
+                plt.title(f"{ci}", c=textcolor)
         fig.savefig(
-            os.path.join(save_dir, f'{save_str}classmodels.{save_format}'),
-            format=save_format, facecolor=facecolor, bbox_inches='tight'
+            os.path.join(save_dir, f"{save_str}classmodels.{save_format}"),
+            format=save_format,
+            facecolor=facecolor,
+            bbox_inches="tight",
         )
         fig.clear()
         plt.close(fig)
 
 
-class GuidedBackpropagation():
+class GuidedBackpropagation:
     """
     Class for visualising saliency maps with guided backpropagation.
 
@@ -819,12 +899,15 @@ class GuidedBackpropagation():
         """
         self.model = model
         self.invalid_layers: tuple[layers.Layer, ...] = (layers.InputLayer,)
-    
 
     def get_saliency_map(
-            self, input_image: tf.Tensor | np.ndarray, class_index: int = None,
-            layer: int | str | layers.Layer = None, saliency_mode: str = 'abs',
-            force_rgb: bool = False) -> np.ndarray:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_index: int = None,
+        layer: int | str | layers.Layer = None,
+        saliency_mode: str = "abs",
+        force_rgb: bool = False,
+    ) -> np.ndarray:
         """
         Returns a saliency map using guided backpropagation.
 
@@ -849,19 +932,13 @@ class GuidedBackpropagation():
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
         layer = (
-            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            lvutils.get_last_conv2d_layer(self.model)
+            if layer is None
             else lvutils.get_layer_object(self.model, layer)
         )
-        
+
         keras.backend.clear_session()
-        gbmodel = keras.Model(
-            inputs=self.model.inputs, outputs=layer.output, name='gbmodel'
-        )
-        for l in gbmodel.layers:
-            if hasattr(l, 'activation') and l.activation == keras.activations.relu:
-                l.activation = lvutils.guided_relu
-            if isinstance(l, layers.ReLU):
-                l = lvutils.GuidedReLU(name=l.name)
+        gbmodel = lvutils.create_gb_model(self.model, layer)
 
         with tf.GradientTape() as tape:
             tape.watch(input_image)
@@ -873,28 +950,37 @@ class GuidedBackpropagation():
         if saliency.ndim > 2 and not force_rgb:
             saliency = tf.reduce_mean(saliency, axis=-1)
         saliency = saliency.numpy()
-        if saliency_mode == 'abs':
+        if saliency_mode == "abs":
             saliency = np.abs(saliency)
-        elif saliency_mode == 'pos':
+        elif saliency_mode == "pos":
             saliency = np.maximum(saliency, 0)
-        elif saliency_mode == 'norm':
-            saliency = (
-                (saliency - np.min(saliency))
-                / (np.ptp(saliency) + keras.backend.epsilon())
+        elif saliency_mode == "norm":
+            saliency = (saliency - np.min(saliency)) / (
+                np.ptp(saliency) + keras.backend.epsilon()
             )
         return saliency
 
-    
     def plot_saliency_maps(
-            self, input_image: tf.Tensor | np.ndarray, class_indices: list[int] = [],
-            layer: int | str | tf.Tensor = None, saliency_mode: str = 'abs',
-            saliency_cmap: str = 'jet', overlay: bool = True,
-            overlay_alpha: float = 0.5, include_class_titles: bool = False,
-            figscale: float = 2, dpi: float = 100, image_cmap: str = 'binary_r',
-            textcolor: str = 'white', facecolor: str = 'black',
-            save_dir: str = 'guided_backprop', save_str: str = '',
-            save_format: str = 'png', fig_aspect: str = 'uniform',
-            fig_orient: str = 'h') -> None:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_indices: list[int] = [],
+        layer: int | str | tf.Tensor = None,
+        saliency_mode: str = "abs",
+        saliency_cmap: str = "jet",
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        include_class_titles: bool = False,
+        figscale: float = 2,
+        dpi: float = 100,
+        image_cmap: str = "binary_r",
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "guided_backprop",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Plot and save saliency maps using guided backpropagation for the given class
         indices with respect to the specified layer.
@@ -938,29 +1024,20 @@ class GuidedBackpropagation():
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
         if not isinstance(input_image, tf.Tensor):
             input_image = tf.convert_to_tensor(input_image)
         layer = (
-            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            lvutils.get_last_conv2d_layer(self.model)
+            if layer is None
             else lvutils.get_layer_object(self.model, layer)
         )
         if len(class_indices) == 0:
             class_indices = list(range(layer.output_shape[-1]))
 
         keras.backend.clear_session()
-        gbmodel = keras.Model(
-            inputs=self.model.inputs, outputs=layer.output, name='gbmodel'
-        )
-        for l in gbmodel.layers:
-            if hasattr(l, 'activation') and l.activation == keras.activations.relu:
-                l.activation = lvutils.guided_relu
-            if isinstance(l, layers.ReLU):
-                l = lvutils.GuidedReLU(name=l.name)
+        gbmodel = lvutils.create_gb_model(self.model, layer)
 
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(input_image)
@@ -969,64 +1046,73 @@ class GuidedBackpropagation():
         nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
-        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        fig = plt.figure(figsize=(figscale * ncols, figscale * nrows), dpi=dpi)
         if include_class_titles:
             fig.subplots_adjust(wspace=0.05, hspace=0.2)
         else:
             fig.subplots_adjust(wspace=0.05, hspace=0.05)
 
         for i, ci in enumerate(class_indices):
-            fig.add_subplot(nrows, ncols, i+1)
+            fig.add_subplot(nrows, ncols, i + 1)
             with tape:
                 loss = (
-                    pred[..., lvutils.highest_mean_filter(pred)] if ci is None
+                    pred[..., lvutils.highest_mean_filter(pred)]
+                    if ci is None
                     else pred[..., ci]
                 )
             saliency = tape.gradient(loss, input_image)[0, ...]
             if saliency.ndim > 2:
                 saliency = tf.reduce_mean(saliency, axis=-1)
             saliency = saliency.numpy()
-            if saliency_mode == 'abs':
+            if saliency_mode == "abs":
                 saliency = np.abs(saliency)
-            elif saliency_mode == 'pos':
+            elif saliency_mode == "pos":
                 saliency = np.maximum(saliency, 0)
-            elif saliency_mode == 'norm':
-                saliency = (
-                    (saliency - np.min(saliency))
-                    / (np.ptp(saliency) + keras.backend.epsilon())
+            elif saliency_mode == "norm":
+                saliency = (saliency - np.min(saliency)) / (
+                    np.ptp(saliency) + keras.backend.epsilon()
                 )
             if overlay:
                 plt.imshow(input_image[0], cmap=image_cmap)
                 plt.imshow(saliency, cmap=saliency_cmap, alpha=overlay_alpha)
             else:
                 plt.imshow(saliency, cmap=saliency_cmap)
-            plt.axis('off')
+            plt.axis("off")
             if include_class_titles:
-                plt.title(f'{ci}', c=textcolor)
+                plt.title(f"{ci}", c=textcolor)
 
-        del tape # important!
+        del tape  # important!
         fig.savefig(
-            os.path.join(
-                save_dir, f'{save_str}{layer.name}.{save_format}'
-            ),
-            format=save_format, facecolor=facecolor, bbox_inches='tight'
+            os.path.join(save_dir, f"{save_str}{layer.name}.{save_format}"),
+            format=save_format,
+            facecolor=facecolor,
+            bbox_inches="tight",
         )
         fig.clear()
         plt.close(fig)
 
-
     def plot_saliency_maps_layers(
-            self, input_image: tf.Tensor | np.ndarray,
-            layers_list: list[int | str | layers.Layer] = [],
-            class_indices: list[int] = [], max_classes: int = 1024,
-            saliency_mode: str = 'abs', saliency_cmap: str = 'jet',
-            overlay: bool = True, overlay_alpha: float = 0.5,
-            include_class_titles: bool = False, figscale: float = 2,
-            dpi: float = 100, image_cmap: str = 'binary_r',
-            textcolor: str = 'white', facecolor: str = 'black',
-            save_dir: str = 'guided_backprop', save_str: str = '',
-            save_format: str = 'png', fig_aspect: str = 'uniform',
-            fig_orient: str = 'h') -> None:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        layers_list: list[int | str | layers.Layer] = [],
+        class_indices: list[int] = [],
+        max_classes: int = 1024,
+        saliency_mode: str = "abs",
+        saliency_cmap: str = "jet",
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        include_class_titles: bool = False,
+        figscale: float = 2,
+        dpi: float = 100,
+        image_cmap: str = "binary_r",
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "guided_backprop",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Plot and save saliency maps using guided backpropagation for the given class
         indices with respect to each layer in the specified list of layers.
@@ -1073,36 +1159,41 @@ class GuidedBackpropagation():
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
-        layers_list = (
-            [l for l in self.model.layers if not isinstance(l, self.invalid_layers)]
-            if len(layers_list) == 0
-            else [lvutils.get_layer_object(self.model, l) for l in layers_list]
+        layers_list = lvutils.process_layers_list(
+            layers_list, self.model, exclude=self.invalid_layers
         )
-        for l in tqdm(layers_list):
-            if l.output_shape[-1] > max_classes:
+        for layer in tqdm(layers_list):
+            if layer.output_shape[-1] > max_classes:
                 print(
-                    f'Skipping layer {l.name} '
-                    f'as it has more than {max_classes} output channels'
+                    f"Skipping layer {layer.name} "
+                    f"as it has more than {max_classes} output channels"
                 )
                 continue
             self.plot_saliency_maps(
-                input_image=input_image, class_indices=class_indices, layer=l,
-                saliency_mode=saliency_mode, saliency_cmap=saliency_cmap,
-                overlay=overlay, overlay_alpha=overlay_alpha,
-                figscale=figscale, dpi=dpi, image_cmap=image_cmap,
+                input_image=input_image,
+                class_indices=class_indices,
+                layer=layer,
+                saliency_mode=saliency_mode,
+                saliency_cmap=saliency_cmap,
+                overlay=overlay,
+                overlay_alpha=overlay_alpha,
+                figscale=figscale,
+                dpi=dpi,
+                image_cmap=image_cmap,
                 include_class_titles=include_class_titles,
-                textcolor=textcolor, facecolor=facecolor, save_dir=save_dir,
-                save_str=save_str, save_format=save_format,
-                fig_aspect=fig_aspect, fig_orient=fig_orient
+                textcolor=textcolor,
+                facecolor=facecolor,
+                save_dir=save_dir,
+                save_str=save_str,
+                save_format=save_format,
+                fig_aspect=fig_aspect,
+                fig_orient=fig_orient,
             )
 
 
-class GuidedGradCAM():
+class GuidedGradCAM:
     """
     Class for visualising class activation maps with Guided-GradCAM
 
@@ -1121,11 +1212,13 @@ class GuidedGradCAM():
         self.gradcam = GradCAM(self.model)
         self.guidedbackprop = GuidedBackpropagation(self.model)
 
-
     def generate_heatmap(
-            self, input_image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str | layers.Layer = None,
-            saliency_mode: str = 'norm') -> np.ndarray:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_index: int,
+        layer: int | str | layers.Layer = None,
+        saliency_mode: str = "norm",
+    ) -> np.ndarray:
         """
         Generates a class activation heatmap using Grad-CAM for the given input image
         and prediction class index. Can optionally specify a layer (uses the last
@@ -1149,31 +1242,39 @@ class GuidedGradCAM():
             ValueError if the specified layer has an invalid shape.
         """
         layer = (
-            lvutils.get_last_conv2d_layer(self.model) if layer is None
+            lvutils.get_last_conv2d_layer(self.model)
+            if layer is None
             else lvutils.get_layer_object(self.model, layer)
         )
         if len(layer.output_shape) != 4:
             raise ValueError(
-                f'Layer {layer.name} has an invalid shape. '
-                f'It is recommended to use the last Conv2D layer.'
+                f"Layer {layer.name} has an invalid shape. "
+                f"It is recommended to use the last Conv2D layer."
             )
         cam = self.gradcam.generate_heatmap(
-            input_image=input_image, class_index=class_index,
-            layer=layer, resize=True
+            input_image=input_image, class_index=class_index, layer=layer, resize=True
         )
         gbsaliency = self.guidedbackprop.get_saliency_map(
-            input_image=input_image, class_index=class_index,
-            layer=layer, saliency_mode=saliency_mode
+            input_image=input_image,
+            class_index=class_index,
+            layer=layer,
+            saliency_mode=saliency_mode,
         )
         return cam * gbsaliency
 
-
     def plot_heatmap(
-            self, input_image: tf.Tensor | np.ndarray, class_index: int,
-            layer: int | str | layers.Layer = None, saliency_mode: str = 'abs',
-            overlay: bool = True, overlay_alpha: float = 0.5,
-            heatmap_cmap: str = 'jet', image_cmap: str = 'binary_r',
-            figsize: float = 6, dpi: float = 100) -> Figure:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        class_index: int,
+        layer: int | str | layers.Layer = None,
+        saliency_mode: str = "abs",
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        heatmap_cmap: str = "jet",
+        image_cmap: str = "binary_r",
+        figsize: float = 6,
+        dpi: float = 100,
+    ) -> Figure:
         """
         Generates and plots a class activation heatmap using Guided-GradCAM for the
         given input image, prediction index and layer.
@@ -1196,13 +1297,15 @@ class GuidedGradCAM():
             image_cmap: The colormap to use for the image. Default is 'binary_r'.
             figsize: Figure size, passed to plt.figure. Default is 10.
             dpi: Base resolution, passed to plt.figure. Default is 100.
-        
+
         Returns:
             The figure with the desired heatmap.
         """
         heatmap = self.generate_heatmap(
-            input_image=input_image, class_index=class_index,
-            layer=layer, saliency_mode=saliency_mode
+            input_image=input_image,
+            class_index=class_index,
+            layer=layer,
+            saliency_mode=saliency_mode,
         )
         fig = plt.figure(figsize=(figsize, figsize), dpi=dpi)
         if overlay:
@@ -1210,19 +1313,30 @@ class GuidedGradCAM():
             plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
         else:
             plt.imshow(heatmap, cmap=heatmap_cmap)
-        plt.axis('off')
+        plt.axis("off")
         return fig
 
-
     def plot_heatmaps(
-            self, input_image: np.ndarray, class_indices: list[int] = [],
-            layer: int | str | layers.Layer = None, saliency_mode: str = 'norm',
-            overlay: bool = True, overlay_alpha: float = 0.5,
-            heatmap_cmap: str = 'jet', image_cmap: str = 'binary_r',
-            include_class_titles: bool = True, figscale: float = 2, dpi: float = 100,
-            textcolor: str = 'white', facecolor: str = 'black',
-            save_dir: str = 'heatmaps', save_str: str = '', save_format: str = 'png',
-            fig_aspect: str = 'uniform', fig_orient: str = 'h') -> None:
+        self,
+        input_image: np.ndarray,
+        class_indices: list[int] = [],
+        layer: int | str | layers.Layer = None,
+        saliency_mode: str = "norm",
+        overlay: bool = True,
+        overlay_alpha: float = 0.5,
+        heatmap_cmap: str = "jet",
+        image_cmap: str = "binary_r",
+        include_class_titles: bool = True,
+        figscale: float = 2,
+        dpi: float = 100,
+        textcolor: str = "white",
+        facecolor: str = "black",
+        save_dir: str = "heatmaps",
+        save_str: str = "",
+        save_format: str = "png",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+    ) -> None:
         """
         Plots and saves class activation heatmaps using Grad-CAM for the given input
         image with respect to the specified class indices, or all class indices.
@@ -1258,14 +1372,11 @@ class GuidedGradCAM():
                 and 'wide' for rectangular. Default is 'uniform'.
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
                 will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
-            
+
         Returns:
             An all-in-one figure with each heatmap as a subplot.
         """
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
+        os.makedirs(save_dir, exist_ok=True)
 
         if len(class_indices) == 0:
             class_indices = list(range(self.model.output_shape[-1]))
@@ -1273,31 +1384,35 @@ class GuidedGradCAM():
         nrows, ncols = lvutils.obtain_reasonable_figsize(
             num_subplots=len(class_indices), aspect_mode=fig_aspect, orient=fig_orient
         )
-        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+        fig = plt.figure(figsize=(figscale * ncols, figscale * nrows), dpi=dpi)
         if include_class_titles:
             fig.subplots_adjust(wspace=0.05, hspace=0.2)
         else:
             fig.subplots_adjust(wspace=0.05, hspace=0.05)
 
         for i, ci in enumerate(class_indices):
-            fig.add_subplot(nrows, ncols, i+1)
+            fig.add_subplot(nrows, ncols, i + 1)
             heatmap = self.generate_heatmap(
-                input_image=input_image, class_index=ci,
-                layer=layer, saliency_mode=saliency_mode
+                input_image=input_image,
+                class_index=ci,
+                layer=layer,
+                saliency_mode=saliency_mode,
             )
             if overlay:
                 plt.imshow(input_image[0], cmap=image_cmap)
                 plt.imshow(heatmap, cmap=heatmap_cmap, alpha=overlay_alpha)
             else:
                 plt.imshow(heatmap, cmap=heatmap_cmap)
-            plt.axis('off')
+            plt.axis("off")
             if include_class_titles:
-                plt.title(f'{ci}', c=textcolor)
+                plt.title(f"{ci}", c=textcolor)
         fig.savefig(
             os.path.join(
-                save_dir, f'guidedgradcam_{save_str}{self.model.name}.{save_format}'
+                save_dir, f"guidedgradcam_{save_str}{self.model.name}.{save_format}"
             ),
-            format=save_format, facecolor=facecolor, bbox_inches='tight'
+            format=save_format,
+            facecolor=facecolor,
+            bbox_inches="tight",
         )
         fig.clear()
         plt.close(fig)

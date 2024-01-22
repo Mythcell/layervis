@@ -26,6 +26,7 @@ import os
 
 import layervis.utils as lvutils
 
+
 class FeatureMaps:
     """
     Class for visualising the feature maps of convolutional neural networks.
@@ -35,8 +36,8 @@ class FeatureMaps:
     """
 
     def __init__(
-            self, model: keras.Model,
-            valid_layers: tuple[layers.Layer, ...] = None):
+        self, model: keras.Model, valid_layers: tuple[layers.Layer, ...] = None
+    ):
         """
         Initialises a FeatureMaps object with the provided model and layers to extract.
 
@@ -51,17 +52,21 @@ class FeatureMaps:
         self.model = model
         if valid_layers is None:
             self.valid_layers = (
-                layers.Conv2D, layers.SeparableConv2D, layers.Conv2DTranspose,
-                layers.DepthwiseConv2D, layers.MaxPool2D, layers.AvgPool2D,
-                layers.ReLU, layers.LeakyReLU
+                layers.Conv2D,
+                layers.SeparableConv2D,
+                layers.Conv2DTranspose,
+                layers.DepthwiseConv2D,
+                layers.MaxPool2D,
+                layers.AvgPool2D,
+                layers.ReLU,
+                layers.LeakyReLU,
             )
         else:
             self.valid_layers = valid_layers
 
-
     def get_feature_maps(
-            self, input_image: tf.Tensor | np.ndarray,
-            layer: int | str | layers.Layer) -> np.ndarray | None:
+        self, input_image: tf.Tensor | np.ndarray, layer: int | str | layers.Layer
+    ) -> np.ndarray | None:
         """
         Extracts feature maps for the given input with respect to the specified layer.
         Will skip layers with non 4-dimensional outputs.
@@ -77,29 +82,38 @@ class FeatureMaps:
         Raises:
             ValueError if the provided layer is not a valid layer.
         """
+        keras.backend.clear_session()
+
         layer = lvutils.get_layer_object(self.model, layer)
         if not isinstance(layer, self.valid_layers):
-            raise ValueError(f'Invalid layer, must be one of {self.valid_layers}')
+            raise ValueError(f"Invalid layer, must be one of {self.valid_layers}")
+
         input_image = tf.convert_to_tensor(input_image)
-        
-        keras.backend.clear_session()
         feature_model = keras.Model(inputs=self.model.input, outputs=layer.output)
+        # feature_maps = feature_model.predict(input_image, verbose=False)
         feature_maps = feature_model(input_image)
+
         if feature_maps.ndim != 4:
             print(
-                f'W: Skipping layer {layer.name} '
-                f'as {feature_maps.shape} is an invalid output shape'
+                f"W: Skipping layer {layer.name} "
+                f"as {feature_maps.shape} is an invalid output shape"
             )
             return None
         return feature_maps.numpy()
-
+        # return feature_maps
 
     def plot_feature_map(
-            self, input_image: tf.Tensor | np.ndarray, layer: str | int | layers.Layer, 
-            figscale: float = 1, dpi: float = 100, cmap: str = 'cividis',
-            fig_aspect: str = 'uniform', fig_orient: str = 'h',
-            include_title: bool = False,
-            include_corner_axis: bool = True) -> Figure | None:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        layer: str | int | layers.Layer,
+        figscale: float = 1,
+        dpi: float = 100,
+        cmap: str = "cividis",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+        include_title: bool = False,
+        include_corner_axis: bool = True,
+    ) -> Figure | None:
         """
         Plots and returns the feature maps for a given layer, with the given input.
 
@@ -114,7 +128,8 @@ class FeatureMaps:
                 of the figure. Use 'uniform' for squarish plots
                 and 'wide' for rectangular. Default is 'uniform'.
             fig_orient One of 'h' or 'v'. If set to 'h', the number of columns
-                will be >= the number of rows (vice versa if set to 'v'). Default is 'h'.
+                will be >= the number of rows (vice versa if set to 'v').
+                Default is 'h'.
             include_title: Whether to add a title to the figure.
             include_corner_axis: Whether to display an axis on the
                 bottom-left subplot.
@@ -127,9 +142,7 @@ class FeatureMaps:
                 value provided for layer is not of the correct type, and/or if the
                 layer str/index does not exist.
         """
-        feature_maps = self.get_feature_maps(
-            input_image=input_image, layer=layer
-        )
+        feature_maps = self.get_feature_maps(input_image=input_image, layer=layer)
         if feature_maps is None:
             return None
         # determine figure dimensions
@@ -137,31 +150,38 @@ class FeatureMaps:
         nrows, ncols = lvutils.obtain_reasonable_figsize(
             nmaps, aspect_mode=fig_aspect, orient=fig_orient
         )
-        fig = plt.figure(figsize=(figscale*ncols, figscale*nrows), dpi=dpi)
+
+        fig = plt.figure(figsize=(figscale * ncols, figscale * nrows), dpi=dpi)
         fig.subplots_adjust(wspace=0.05, hspace=0.05)
         if include_title:
-            fig.suptitle(f'{self.layer_names[i]}')
+            # layer_name = lvutils.get_layer_object(self.model, layer).name
+            fig.suptitle(lvutils.get_layer_object(self.model, layer).name)
         for i in range(nmaps):
-            fig.add_subplot(nrows, ncols, i+1)
+            fig.add_subplot(nrows, ncols, i + 1)
             plt.imshow(feature_maps[0, ..., i], cmap=cmap)
-            if include_corner_axis:
-                # remove axes from all but the bottom-left subplot
-                if i != (nrows - 1)*ncols:
-                    plt.axis('off')
-            else:
-                plt.axis('off')
+            plt.axis("off")
+            if include_corner_axis and i == (nrows - 1) * ncols:
+                plt.axis("on")
         return fig
 
-
     def plot_feature_maps(
-            self, input_image: tf.Tensor | np.ndarray,
-            layers_list: list[int | str | layers.Layer] = [],
-            plot_input: bool = True, figscale: float = 1, dpi: float = 100,
-            cmap: str = 'cividis', facecolor: str = 'white',
-            fig_aspect: str = 'uniform', fig_orient: str = 'h',
-            save_dir: str = 'feature_maps', save_format: str = 'png', prefix: str = '',
-            suffix: str = '', include_titles: bool = False,
-            include_corner_axis: bool = False) -> None:
+        self,
+        input_image: tf.Tensor | np.ndarray,
+        layers_list: list[int | str | layers.Layer] = [],
+        plot_input: bool = True,
+        figscale: float = 1,
+        dpi: float = 100,
+        cmap: str = "cividis",
+        facecolor: str = "white",
+        fig_aspect: str = "uniform",
+        fig_orient: str = "h",
+        save_dir: str = "feature_maps",
+        save_format: str = "png",
+        prefix: str = "",
+        suffix: str = "",
+        include_titles: bool = False,
+        include_corner_axis: bool = False,
+    ) -> None:
         """
         Plots and saves all feature maps for all convolutional and pooling
         layers with respect to the provided (single) test image. Ensure that
@@ -196,39 +216,43 @@ class FeatureMaps:
             include_corner_axis: Whether to display axes on the
                 bottom-left subplot of each figure. Defaults to False.
         """
-        layers_list = (
-            [i for i in self.model.layers if isinstance(i, self.valid_layers)]
-            if len(layers_list) == 0
-            else [lvutils.get_layer_object(self.model, l) for l in layers]
+        layers_list = lvutils.process_layers_list(
+            layers_list, self.model, include=self.valid_layers
         )
+        os.makedirs(save_dir, exist_ok=True)
 
-        try:
-            os.mkdir(save_dir)
-        except FileExistsError:
-            pass
-        
         if plot_input:
             lvutils.save_image(
-                image=input_image[0, ...], figsize=figscale*6, dpi=dpi,
-                cmap=cmap, facecolor=facecolor, save_dir=save_dir,
-                filename=f'input{suffix}', save_format=save_format,
-                figure_title=('input' if include_titles else None),
-                include_axis=include_corner_axis
+                image=input_image[0, ...],
+                figsize=figscale * 6,
+                dpi=dpi,
+                cmap=cmap,
+                facecolor=facecolor,
+                save_dir=save_dir,
+                filename=f"input{suffix}",
+                save_format=save_format,
+                figure_title="input" if include_titles else None,
+                include_axis=include_corner_axis,
             )
         for layer in tqdm(layers_list):
             fig = self.plot_feature_map(
-                input_image=input_image, layer=layer, figscale=figscale, dpi=dpi,
-                cmap=cmap, fig_aspect=fig_aspect, fig_orient=fig_orient,
-                include_title=include_titles, include_corner_axis=include_corner_axis
+                input_image=input_image,
+                layer=layer,
+                figscale=figscale,
+                dpi=dpi,
+                cmap=cmap,
+                fig_aspect=fig_aspect,
+                fig_orient=fig_orient,
+                include_title=include_titles,
+                include_corner_axis=include_corner_axis,
             )
             if fig is None:
                 continue
             file_name = os.path.join(
-                f'{save_dir}',
-                f'{prefix}{layer.name}{suffix}.{save_format}'
+                save_dir, f"{prefix}{layer.name}{suffix}.{save_format}"
             )
             fig.savefig(
-                file_name, format=save_format, facecolor=facecolor, bbox_inches='tight'
+                file_name, format=save_format, facecolor=facecolor, bbox_inches="tight"
             )
             fig.clear()
             plt.close(fig)

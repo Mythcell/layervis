@@ -16,18 +16,21 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import tensorflow as tf
-from tensorflow import keras
-from keras import layers
 import numpy as np
 import matplotlib.pyplot as plt
+import umap
+import math
+
+from tensorflow import keras
+from keras import layers
 from matplotlib import patches
 from matplotlib.figure import Figure
 from matplotlib.colors import Colormap
-import umap
 
 import layervis.utils as lvutils
 
-class ImageAtlas():
+
+class ImageAtlas:
     """
     Class for visualising image atlases.
 
@@ -44,12 +47,19 @@ class ImageAtlas():
         """
         self.model = model
 
-
     def get_unet_embedding(
-            self, images: tf.Tensor | np.ndarray, layer: int | str | layers.Layer,
-            mapper: umap.UMAP = None, n_neighbors: int = 15, n_components: int = 2,
-            metric: str = 'euclidean', n_epochs: int = 500, min_dist: float = 0.1,
-            spread: float = 1, verbose: bool = True) -> np.ndarray:
+        self,
+        images: tf.Tensor | np.ndarray,
+        layer: int | str | layers.Layer,
+        mapper: umap.UMAP = None,
+        n_neighbors: int = 15,
+        n_components: int = 2,
+        metric: str = "euclidean",
+        n_epochs: int = 500,
+        min_dist: float = 0.1,
+        spread: float = 1,
+        verbose: bool = True,
+    ) -> np.ndarray:
         """
         Uses UMAP to create a lower-dimensional embedding of the outputs of the
         specified model layer when inputted with the given array of images. You can
@@ -75,25 +85,38 @@ class ImageAtlas():
         layer = lvutils.get_layer_object(model=self.model, layer_spec=layer)
         if mapper is None:
             mapper = umap.UMAP(
-                n_neighbors=n_neighbors, n_components=n_components, metric=metric,
-                n_epochs=n_epochs, min_dist=min_dist, spread=spread, verbose=verbose
+                n_neighbors=n_neighbors,
+                n_components=n_components,
+                metric=metric,
+                n_epochs=n_epochs,
+                min_dist=min_dist,
+                spread=spread,
+                verbose=verbose,
             )
         keras.backend.clear_session()
-        output_model = keras.Model(
-            inputs=self.model.inputs, outputs=layer.output
-        )
+        output_model = keras.Model(inputs=self.model.inputs, outputs=layer.output)
         model_outputs = output_model.predict(images, verbose=0)
         model_outputs = model_outputs.reshape(len(model_outputs), -1)
         return mapper.fit_transform(model_outputs)
 
-
     def plot_image_atlas(
-            self, images: np.ndarray, embedding: np.ndarray, nx: int, ny: int,
-            max_image_dist: float, grid_pad: int = 0,
-            labels: np.ndarray | list[int] = None, normalize_embedding: bool = True,
-            label_cmap: Colormap = plt.cm.viridis, label_display: str = 'border',
-            border_thickness: float = 0.5, overlay_alpha: float = 0.1,
-            figscale: float = 1, dpi: float = 100, cmap: str = 'binary_r') -> Figure:
+        self,
+        images: np.ndarray,
+        embedding: np.ndarray,
+        nx: int,
+        ny: int,
+        max_image_dist: float,
+        grid_pad: int = 0,
+        labels: np.ndarray | list[int] = None,
+        normalize_embedding: bool = True,
+        label_cmap: Colormap = plt.cm.viridis,
+        label_display: str = "border",
+        border_thickness: float = 0.5,
+        overlay_alpha: float = 0.1,
+        figscale: float = 1,
+        dpi: float = 100,
+        cmap: str = "binary_r",
+    ) -> Figure:
         """
         Plots an atlas of an imageset subject to some embedding.
 
@@ -137,20 +160,17 @@ class ImageAtlas():
         """
         # first normalize the embedding
         if normalize_embedding:
-            embedding[:, 0] = (
-                (embedding[:, 0] - np.min(embedding[:, 0]))
-                / np.ptp(embedding[:, 0])
+            embedding[:, 0] = (embedding[:, 0] - np.min(embedding[:, 0])) / np.ptp(
+                embedding[:, 0]
             )
-            embedding[:, 1] = (
-                (embedding[:, 1] - np.min(embedding[:, 1]))
-                / np.ptp(embedding[:, 1])
+            embedding[:, 1] = (embedding[:, 1] - np.min(embedding[:, 1])) / np.ptp(
+                embedding[:, 1]
             )
         # label normalisation is performed regardless of normalize_embedding
         show_labels = labels is not None
         if show_labels:
             labels = (labels - np.min(labels)) / np.ptp(labels)
-            # if label_colormap is None:
-            #     label_colormap = plt.cm.viridis
+
         xvals = np.linspace(
             np.min(embedding[:, 0]) - grid_pad, np.max(embedding[:, 0]) + grid_pad, nx
         )
@@ -159,34 +179,40 @@ class ImageAtlas():
         )
 
         image_size = images[0].shape[0]
-        fig = plt.figure(figsize=(figscale*nx, figscale*ny), dpi=dpi)
+        fig = plt.figure(figsize=(figscale * nx, figscale * ny), dpi=dpi)
         fig.subplots_adjust(wspace=0, hspace=0)
-        nn = 1 # subplot index
+        nn = 1  # subplot index
         for i in yvals:
             for j in xvals:
                 ax = fig.add_subplot(ny, nx, nn)
                 closest = min(
                     enumerate(embedding),
-                    key=lambda x: lvutils.euclidean_dist_2d(x[1], (j, i))
+                    key=lambda x: math.dist(x[1], (j, i)),
                 )
-                distance = lvutils.euclidean_dist_2d(closest[1], (j, i))
+                distance = math.dist(closest[1], (j, i))
                 if distance <= max_image_dist:
                     ax.imshow(images[closest[0], ...], cmap=cmap)
                     if show_labels:
-                        if label_display == 'border':
+                        if label_display == "border":
                             rect = patches.Rectangle(
-                                (1, 1), width=image_size-2, height=image_size-2,
-                                linewidth=border_thickness, facecolor='none',
-                                edgecolor=label_cmap(labels[closest[0]])
+                                (1, 1),
+                                width=image_size - 2,
+                                height=image_size - 2,
+                                linewidth=border_thickness,
+                                facecolor="none",
+                                edgecolor=label_cmap(labels[closest[0]]),
                             )
-                            ax.add_patch(rect)
-                        elif label_display == 'overlay':
+                        elif label_display == "overlay":
                             rect = patches.Rectangle(
-                                (0, 0), width=image_size, height=image_size,
-                                linewidth=0, edgecolor='none', alpha=overlay_alpha,
-                                facecolor=label_cmap(labels[closest[0]])
+                                (0, 0),
+                                width=image_size,
+                                height=image_size,
+                                linewidth=0,
+                                edgecolor="none",
+                                alpha=overlay_alpha,
+                                facecolor=label_cmap(labels[closest[0]]),
                             )
-                            ax.add_patch(rect)
-                plt.axis('off')
+                        ax.add_patch(rect)
+                plt.axis("off")
                 nn += 1
         return fig
